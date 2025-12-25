@@ -13,7 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /**
- * Logique des onglets : Bascule entre les sections main
+ * Système d'onglets pour navigation fluide
  */
 function setupTabs() {
     const tabs = document.querySelectorAll('.nav-tab');
@@ -21,15 +21,14 @@ function setupTabs() {
         tab.addEventListener('click', () => {
             const targetTab = tab.getAttribute('data-tab');
 
-            // Mise à jour visuelle des boutons d'onglets
             tabs.forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
 
-            // Masquer tout le contenu et afficher le contenu cible
             document.querySelectorAll('.tab-content').forEach(section => {
                 section.classList.remove('active');
             });
-            document.getElementById(`tab-${targetTab}`).classList.add('active');
+            const targetSection = document.getElementById(`tab-${targetTab}`);
+            if (targetSection) targetSection.classList.add('active');
         });
     });
 }
@@ -43,13 +42,20 @@ function showConfigModal() {
     }
 }
 
+/**
+ * fetchWithRetry amélioré pour éviter les erreurs "message port closed"
+ */
 async function fetchWithRetry(url, options = {}, retries = 3) {
     try {
         const response = await fetch(url, options);
-        if (!response.ok) throw new Error('Network error');
+        // Si no-cors est utilisé, on ne peut pas lire response.ok
+        if (options.mode !== 'no-cors' && !response.ok) throw new Error('Erreur réseau');
         return response;
     } catch (err) {
-        if (retries > 0) return fetchWithRetry(url, options, retries - 1);
+        if (retries > 0) {
+            await new Promise(res => setTimeout(res, 1000));
+            return fetchWithRetry(url, options, retries - 1);
+        }
         throw err;
     }
 }
@@ -65,8 +71,8 @@ async function fetchData() {
         statusEl.innerText = "À jour";
         renderDashboard(result.transactions || [], result.live || []);
     } catch (error) {
-        statusEl.innerText = "Erreur";
-        console.error(error);
+        statusEl.innerText = "Erreur Sync";
+        console.warn("Erreur de récupération des données : ", error.message);
     }
 }
 
@@ -82,9 +88,8 @@ function setupEventListeners() {
 
     document.getElementById('transactionForm').addEventListener('submit', handleFormSubmit);
 
-    // Double clic sur le statut pour changer l'URL de l'API
     document.getElementById('status').addEventListener('dblclick', () => {
-        const newUrl = prompt("Nouvelle URL API ?", API_URL);
+        const newUrl = prompt("Modifier l'URL de l'API ?", API_URL);
         if (newUrl) {
             localStorage.setItem('pea_api_url', newUrl);
             location.reload();
@@ -95,7 +100,8 @@ function setupEventListeners() {
 async function handleFormSubmit(e) {
     e.preventDefault();
     const btn = e.target.querySelector('.btn-submit');
-    btn.innerText = "Envoi...";
+    const originalText = btn.innerText;
+    btn.innerText = "Traitement...";
     btn.disabled = true;
 
     const qte = parseFloat(document.getElementById('t_qte').value);
@@ -104,7 +110,7 @@ async function handleFormSubmit(e) {
 
     const data = {
         date: document.getElementById('t_date').value,
-        ticker: document.getElementById('t_ticker').value.toUpperCase(),
+        ticker: document.getElementById('t_ticker').value.toUpperCase().trim(),
         quantite: qte,
         prix: prix,
         frais: frais,
@@ -113,24 +119,31 @@ async function handleFormSubmit(e) {
     };
 
     try {
+        // Envoi vers Google Script
         await fetch(API_URL, { 
             method: 'POST', 
             mode: 'no-cors', 
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data) 
         });
+        
         document.getElementById('transactionModal').style.display = 'none';
         e.target.reset();
-        setTimeout(fetchData, 1500); 
+        
+        // Notification visuelle
+        document.getElementById('status').innerText = "Enregistré !";
+        setTimeout(fetchData, 2000); 
     } catch (error) {
-        alert("Erreur réseau");
+        console.error("Erreur d'envoi :", error);
+        alert("Erreur lors de l'enregistrement. Vérifiez votre connexion.");
     } finally {
-        btn.innerText = "Valider";
+        btn.innerText = originalText;
         btn.disabled = false;
     }
 }
 
 function cleanNumber(val) {
-    if (!val) return 0;
+    if (val === undefined || val === null) return 0;
     return parseFloat(val.toString().replace(',', '.')) || 0;
 }
 
@@ -139,104 +152,124 @@ function formatEuro(val) {
 }
 
 function renderDashboard(transactions, liveData) {
-    document.getElementById('last-update').innerText = "Màj: " + new Date().toLocaleTimeString('fr-FR');
+    document.getElementById('last-update').innerText = "Dernière màj: " + new Date().toLocaleTimeString('fr-FR');
     
-    // 1. Remplissage Historique (Onglet Transactions)
+    // 1. Historique
     const historyBody = document.getElementById('table-body-history');
-    historyBody.innerHTML = "";
-    const sorted = [...transactions].sort((a, b) => new Date(b.date) - new Date(a.date));
-    
-    sorted.forEach(t => {
-        const d = t.date ? new Date(t.date).toLocaleDateString('fr-FR') : "-";
-        historyBody.innerHTML += `
-            <tr>
-                <td>${d}</td>
-                <td><strong>${t.ticker}</strong></td>
-                <td>${t.quantite}</td>
-                <td>${formatEuro(t.prix)}</td>
-                <td>${formatEuro(t.total)}</td>
-            </tr>
-        `;
-    });
+    if (historyBody) {
+        historyBody.innerHTML = "";
+        const sorted = [...transactions].sort((a, b) => new Date(b.date) - new Date(a.date));
+        
+        sorted.forEach(t => {
+            const d = t.date ? new Date(t.date).toLocaleDateString('fr-FR') : "-";
+            historyBody.innerHTML += `
+                <tr>
+                    <td>${d}</td>
+                    <td><span style="background:#f1f5f9; padding:2px 6px; border-radius:4px; font-weight:bold">${t.ticker}</span></td>
+                    <td>${t.quantite}</td>
+                    <td>${formatEuro(t.prix)}</td>
+                    <td>${formatEuro(t.total)}</td>
+                </tr>
+            `;
+        });
+    }
 
-    // 2. Remplissage Dashboard (Onglet Résumé)
+    // 2. Dashboard
     const liveBody = document.getElementById('table-body-live');
-    liveBody.innerHTML = "";
-    
-    let totalActuel = 0;
-    let totalInvesti = 0;
-    let statsMois = {};
-    let statsProduit = {};
+    if (liveBody) {
+        liveBody.innerHTML = "";
+        
+        let totalActuel = 0;
+        let totalInvesti = 0;
+        let statsMois = {};
+        let statsProduit = {};
 
-    transactions.forEach(t => {
-        const val = cleanNumber(t.total);
-        totalInvesti += val;
-        const date = new Date(t.date);
-        const label = date.toLocaleDateString('fr-FR', {month: 'short', year: '2-digit'});
-        statsMois[label] = (statsMois[label] || 0) + val;
-    });
+        transactions.forEach(t => {
+            const val = cleanNumber(t.total);
+            totalInvesti += val;
+            const date = new Date(t.date);
+            const label = date.toLocaleDateString('fr-FR', {month: 'short', year: '2-digit'});
+            statsMois[label] = (statsMois[label] || 0) + val;
+        });
 
-    liveData.forEach(item => {
-        const nom = item.liste_produits || item.ticker || "Inconnu";
-        const sommeVal = cleanNumber(item.somme);
-        totalActuel += sommeVal;
-        statsProduit[nom] = sommeVal;
+        liveData.forEach(item => {
+            const nom = item.liste_produits || item.ticker || "Autre";
+            const sommeVal = cleanNumber(item.somme);
+            totalActuel += sommeVal;
+            statsProduit[nom] = (statsProduit[nom] || 0) + sommeVal;
 
-        const am = cleanNumber(item.achat_moyen);
-        const cours = cleanNumber(item.valeur_unitaire);
-        const perf = am > 0 ? ((cours - am) / am) * 100 : 0;
+            const am = cleanNumber(item.achat_moyen);
+            const cours = cleanNumber(item.valeur_unitaire);
+            const perf = am > 0 ? ((cours - am) / am) * 100 : 0;
 
-        liveBody.innerHTML += `
-            <tr>
-                <td><strong>${nom}</strong></td>
-                <td>${item.unité}</td>
-                <td>${formatEuro(cours)}</td>
-                <td>${formatEuro(sommeVal)}</td>
-                <td class="${perf>=0?'trend-up':'trend-down'}">${perf.toFixed(1)}%</td>
-            </tr>
-        `;
-    });
+            liveBody.innerHTML += `
+                <tr>
+                    <td><strong>${nom}</strong></td>
+                    <td>${item.unité}</td>
+                    <td>${formatEuro(cours)}</td>
+                    <td>${formatEuro(sommeVal)}</td>
+                    <td class="${perf>=0?'trend-up':'trend-down'}" style="font-weight:bold">${perf > 0 ? '+' : ''}${perf.toFixed(1)}%</td>
+                </tr>
+            `;
+        });
 
-    const gain = totalActuel - totalInvesti;
-    const perfG = totalInvesti > 0 ? (gain / totalInvesti) * 100 : 0;
+        const gain = totalActuel - totalInvesti;
+        const perfG = totalInvesti > 0 ? (gain / totalInvesti) * 100 : 0;
 
-    document.getElementById('live-total').innerText = formatEuro(totalActuel);
-    document.getElementById('total-investi-label').innerText = "Investi: " + formatEuro(totalInvesti);
-    document.getElementById('total-gain').innerText = formatEuro(gain);
-    document.getElementById('total-gain').className = "value " + (gain >= 0 ? "trend-up" : "trend-down");
-    document.getElementById('live-perf-global').innerHTML = `<span class="${gain>=0?'trend-up':'trend-down'}">${perfG.toFixed(2)}%</span>`;
+        document.getElementById('live-total').innerText = formatEuro(totalActuel);
+        document.getElementById('total-investi-label').innerText = "Capital Investi: " + formatEuro(totalInvesti);
+        document.getElementById('total-gain').innerText = (gain >= 0 ? "+" : "") + formatEuro(gain);
+        document.getElementById('total-gain').className = "value " + (gain >= 0 ? "trend-up" : "trend-down");
+        document.getElementById('live-perf-global').innerHTML = `<span class="${gain>=0?'trend-up':'trend-down'}" style="font-weight:bold">${perfG.toFixed(2)}%</span>`;
 
-    updateCharts(statsMois, statsProduit);
+        updateCharts(statsMois, statsProduit);
+    }
 }
 
 function updateCharts(dataMois, dataProduit) {
-    const bCtx = document.getElementById('barChart').getContext('2d');
-    if (barChartInstance) barChartInstance.destroy();
-    barChartInstance = new Chart(bCtx, {
-        type: 'bar',
-        data: { 
-            labels: Object.keys(dataMois), 
-            datasets: [{ 
-                label: 'Investissements', 
-                data: Object.values(dataMois), 
-                backgroundColor: '#2563eb',
-                borderRadius: 5
-            }]
-        },
-        options: { responsive: true, maintainAspectRatio: false }
-    });
+    const bCtx = document.getElementById('barChart');
+    if (bCtx && bCtx.getContext) {
+        if (barChartInstance) barChartInstance.destroy();
+        barChartInstance = new Chart(bCtx.getContext('2d'), {
+            type: 'bar',
+            data: { 
+                labels: Object.keys(dataMois), 
+                datasets: [{ 
+                    label: 'Investi (€)', 
+                    data: Object.values(dataMois), 
+                    backgroundColor: '#3b82f6',
+                    borderRadius: 4
+                }]
+            },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, grid: { display: false } } }
+            }
+        });
+    }
 
-    const pCtx = document.getElementById('pieChart').getContext('2d');
-    if (pieChartInstance) pieChartInstance.destroy();
-    pieChartInstance = new Chart(pCtx, {
-        type: 'doughnut',
-        data: { 
-            labels: Object.keys(dataProduit), 
-            datasets: [{ 
-                data: Object.values(dataProduit), 
-                backgroundColor: ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'] 
-            }]
-        },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
-    });
+    const pCtx = document.getElementById('pieChart');
+    if (pCtx && pCtx.getContext) {
+        if (pieChartInstance) pieChartInstance.destroy();
+        pieChartInstance = new Chart(pCtx.getContext('2d'), {
+            type: 'doughnut',
+            data: { 
+                labels: Object.keys(dataProduit), 
+                datasets: [{ 
+                    data: Object.values(dataProduit), 
+                    backgroundColor: ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'],
+                    borderWidth: 2,
+                    borderColor: '#ffffff'
+                }]
+            },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                cutout: '65%',
+                plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 15, font: { size: 11 } } } } 
+            }
+        });
+    }
 }
