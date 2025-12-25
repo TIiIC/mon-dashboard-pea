@@ -5,20 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mon Dashboard PEA</title>
     
-    <!-- Lien vers le Manifest pour Android -->
     <link rel="manifest" href="manifest.json">
-    
-    <!-- Icônes pour le téléphone et l'onglet PC -->
     <link rel="icon" type="image/png" href="icon.png?v=2">
     <link rel="shortcut icon" href="icon.png?v=2">
     <link rel="apple-touch-icon" href="icon.png?v=2">
     
-    <!-- Paramètres pour l'affichage "App" -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Mon PEA">
     <meta name="theme-color" content="#2563eb">
-    <meta name="mobile-web-app-capable" content="yes">
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -34,30 +29,71 @@
         }
 
         * { box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
-        body { background: var(--bg); color: var(--text); margin: 0; padding: 15px; padding-bottom: 80px; }
+        body { background: var(--bg); color: var(--text); margin: 0; padding: 0; padding-bottom: 80px; }
         
-        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .status-badge { font-size: 0.8rem; padding: 4px 10px; border-radius: 20px; background: #e2e8f0; cursor: pointer; }
+        header { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            padding: 15px;
+            background: var(--card);
+            border-bottom: 1px solid var(--border);
+        }
+
+        /* Système d'onglets */
+        .nav-tabs {
+            display: flex;
+            background: var(--card);
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+        .nav-tab {
+            flex: 1;
+            padding: 15px;
+            text-align: center;
+            cursor: pointer;
+            font-weight: 600;
+            color: var(--text-muted);
+            border-bottom: 3px solid transparent;
+            transition: 0.3s;
+        }
+        .nav-tab.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+            background: rgba(37, 99, 235, 0.05);
+        }
+
+        /* Conteneurs de contenu */
+        .tab-content { display: none; padding: 15px; }
+        .tab-content.active { display: block; animation: fadeIn 0.3s; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
 
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; margin-bottom: 20px; }
         .card { background: var(--card); padding: 20px; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         .card h3 { margin: 0 0 10px 0; font-size: 0.9rem; color: var(--text-muted); text-transform: uppercase; }
         .card .value { font-size: 1.8rem; font-weight: bold; margin-bottom: 5px; }
-        .card .sub { font-size: 0.85rem; }
-
+        
         .chart-container { position: relative; height: 250px; width: 100%; }
 
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th { text-align: left; font-size: 0.8rem; color: var(--text-muted); padding: 10px; border-bottom: 1px solid var(--border); }
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; font-size: 0.8rem; color: var(--text-muted); padding: 12px 10px; border-bottom: 1px solid var(--border); }
         td { padding: 12px 10px; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
         
         .trend-up { color: var(--up); }
         .trend-down { color: var(--down); }
 
+        .status-badge { font-size: 0.75rem; padding: 4px 10px; border-radius: 20px; background: #e2e8f0; }
+
         .fab {
             position: fixed;
-            bottom: 20px;
-            right: 20px;
+            bottom: 25px;
+            right: 25px;
             width: 60px;
             height: 60px;
             background: var(--primary);
@@ -66,18 +102,19 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 24px;
-            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+            font-size: 28px;
+            box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);
             cursor: pointer;
             border: none;
             z-index: 100;
         }
 
+        /* Modal */
         .modal {
             display: none;
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.5);
+            background: rgba(0,0,0,0.6);
             align-items: center;
             justify-content: center;
             z-index: 200;
@@ -86,111 +123,127 @@
         .modal-content {
             background: white;
             padding: 25px;
-            border-radius: 16px;
+            border-radius: 20px;
             width: 100%;
-            max-width: 400px;
+            max-width: 450px;
         }
         .form-group { margin-bottom: 15px; }
         label { display: block; font-size: 0.85rem; margin-bottom: 5px; color: var(--text-muted); }
-        input, select { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 1rem; }
-        .btn-submit { background: var(--primary); color: white; border: none; width: 100%; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-top: 10px; }
-        
-        @media (max-width: 600px) {
-            .grid { grid-template-columns: 1fr; }
-            .card .value { font-size: 1.5rem; }
-        }
+        input { width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 1rem; }
+        .btn-submit { background: var(--primary); color: white; border: none; width: 100%; padding: 14px; border-radius: 10px; font-weight: bold; cursor: pointer; margin-top: 10px; }
     </style>
 </head>
 <body>
 
     <header>
         <div>
-            <h1 style="margin:0; font-size: 1.4rem;">Investissements</h1>
-            <small id="last-update" style="color:var(--text-muted)">Chargement...</small>
+            <h1 style="margin:0; font-size: 1.2rem;">Dashboard PEA</h1>
+            <small id="last-update" style="color:var(--text-muted)">Synchronisation...</small>
         </div>
-        <div id="status" class="status-badge">Initialisation...</div>
+        <div id="status" class="status-badge">Prêt</div>
     </header>
 
-    <!-- Reste du HTML inchangé -->
-    <div class="grid">
-        <div class="card">
-            <h3>Valeur Totale</h3>
-            <div class="value" id="live-total">0,00 €</div>
-            <div class="sub" id="live-perf-global">--%</div>
-        </div>
-        <div class="card">
-            <h3>Plus/Moins Value</h3>
-            <div class="value" id="total-gain">0,00 €</div>
-            <div id="div-subtext" class="sub" style="color:var(--text-muted)">--</div>
-        </div>
-        <div class="card">
-            <h3>Total Investi</h3>
-            <div class="value" id="total-investi" style="font-size:1.2rem; color:var(--text-muted)">0,00 €</div>
-        </div>
-    </div>
+    <!-- Navigation par onglets -->
+    <nav class="nav-tabs">
+        <div class="nav-tab active" data-tab="dashboard">Résumé</div>
+        <div class="nav-tab" data-tab="transactions">Historique</div>
+    </nav>
 
-    <div class="grid">
-        <div class="card">
-            <h3>Répartition</h3>
-            <div class="chart-container">
-                <canvas id="pieChart"></canvas>
+    <!-- Section 1 : Dashboard -->
+    <main id="tab-dashboard" class="tab-content active">
+        <div class="grid">
+            <div class="card">
+                <h3>Valeur Actuelle</h3>
+                <div class="value" id="live-total">0,00 €</div>
+                <div class="sub" id="live-perf-global">--%</div>
+            </div>
+            <div class="card">
+                <h3>Gain / Perte</h3>
+                <div class="value" id="total-gain">0,00 €</div>
+                <div id="total-investi-label" style="font-size: 0.8rem; color: var(--text-muted);">Investi: --</div>
             </div>
         </div>
-        <div class="card">
-            <h3>Historique Mensuel</h3>
-            <div class="chart-container">
-                <canvas id="barChart"></canvas>
+
+        <div class="grid">
+            <div class="card">
+                <h3>Allocation</h3>
+                <div class="chart-container">
+                    <canvas id="pieChart"></canvas>
+                </div>
+            </div>
+            <div class="card">
+                <h3>Versements</h3>
+                <div class="chart-container">
+                    <canvas id="barChart"></canvas>
+                </div>
             </div>
         </div>
-    </div>
 
-    <div class="card" style="padding: 10px; overflow-x: auto;">
-        <h3>Portefeuille Live</h3>
-        <table>
-            <thead>
-                <tr>
-                    <th>Produit</th>
-                    <th>Qté</th>
-                    <th>PRU</th>
-                    <th>Cours</th>
-                    <th>Total</th>
-                    <th>Gain</th>
-                </tr>
-            </thead>
-            <tbody id="table-body">
-            </tbody>
-        </table>
-    </div>
+        <div class="card" style="padding: 10px; overflow-x: auto; margin-top: 20px;">
+            <h3 style="padding: 10px;">Détails Portefeuille</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Produit</th>
+                        <th>Quantité</th>
+                        <th>Cours</th>
+                        <th>Total</th>
+                        <th>Perf.</th>
+                    </tr>
+                </thead>
+                <tbody id="table-body-live"></tbody>
+            </table>
+        </div>
+    </main>
+
+    <!-- Section 2 : Transactions -->
+    <main id="tab-transactions" class="tab-content">
+        <div class="card" style="padding: 10px; overflow-x: auto;">
+            <h3 style="padding: 10px;">Toutes les transactions</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Ticker</th>
+                        <th>Qté</th>
+                        <th>Prix</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody id="table-body-history"></tbody>
+            </table>
+        </div>
+    </main>
 
     <button class="fab" id="openModalBtn">+</button>
 
+    <!-- Modal Formulaire -->
     <div class="modal" id="transactionModal">
         <div class="modal-content">
-            <h2 style="margin-top:0">Nouvelle Transaction</h2>
+            <h2 style="margin-top:0">Ajouter un achat</h2>
             <form id="transactionForm">
                 <div class="form-group">
                     <label>Date</label>
                     <input type="date" id="t_date" required>
                 </div>
                 <div class="form-group">
-                    <label>Ticker (ex: CW8)</label>
-                    <input type="text" id="t_ticker" placeholder="CW8" required autocomplete="off">
-                    <datalist id="tickers_list"></datalist>
+                    <label>Ticker (ex: CW8, ESE...)</label>
+                    <input type="text" id="t_ticker" placeholder="CW8" required>
                 </div>
                 <div class="form-group">
                     <label>Quantité</label>
                     <input type="number" id="t_qte" step="any" required>
                 </div>
-                <div class="form-group)
-                    <label>Prix Unitaire (€)</label>
+                <div class="form-group">
+                    <label>Prix unitaire (€)</label>
                     <input type="number" id="t_prix" step="any" required>
                 </div>
                 <div class="form-group">
                     <label>Frais (€)</label>
                     <input type="number" id="t_frais" step="any" value="0">
                 </div>
-                <button type="submit" class="btn-submit">Enregistrer</button>
-                <button type="button" id="closeModalBtn" style="background:none; border:none; color:var(--text-muted); width:100%; margin-top:10px; cursor:pointer">Annuler</button>
+                <button type="submit" class="btn-submit">Valider</button>
+                <button type="button" id="closeModalBtn" style="background:none; border:none; color:var(--text-muted); width:100%; margin-top:15px; cursor:pointer">Fermer</button>
             </form>
         </div>
     </div>
