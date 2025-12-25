@@ -92,6 +92,19 @@
 
         .status-badge { font-size: 0.7rem; padding: 4px 10px; border-radius: 20px; background: #e2e8f0; font-weight: bold; }
 
+        .ticker-badge {
+            background: #f1f5f9;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 0.85rem;
+            color: var(--primary);
+        }
+
+        .transaction-row:hover {
+            background-color: #f8fafc;
+        }
+
         .fab {
             position: fixed;
             bottom: 25px;
@@ -201,15 +214,18 @@
 
     <main id="tab-transactions" class="tab-content">
         <div class="card" style="padding: 10px; overflow-x: auto;">
-            <h3 style="padding: 15px 10px 5px 10px;">Journal des opérations</h3>
-            <table>
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 10px 0 10px;">
+                <h3 style="margin: 0;">Journal des opérations</h3>
+            </div>
+            <table style="margin-top: 10px;">
                 <thead>
                     <tr>
                         <th>Date</th>
-                        <th>Ticker</th>
-                        <th>Quantité</th>
-                        <th>Prix U.</th>
+                        <th>Actif</th>
+                        <th>Qté</th>
+                        <th>P.U.</th>
                         <th>Total</th>
+                        <th>Frais</th>
                     </tr>
                 </thead>
                 <tbody id="table-body-history"></tbody>

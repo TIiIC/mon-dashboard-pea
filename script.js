@@ -2,6 +2,9 @@ let API_URL = localStorage.getItem('pea_api_url') || "";
 let barChartInstance = null;
 let pieChartInstance = null;
 
+// Stockage global pour faire la correspondance Ticker -> Nom Produit
+let tickerToNameMap = {};
+
 document.addEventListener('DOMContentLoaded', () => {
     if (!API_URL) {
         showConfigModal();
@@ -42,13 +45,9 @@ function showConfigModal() {
     }
 }
 
-/**
- * fetchWithRetry amélioré pour éviter les erreurs "message port closed"
- */
 async function fetchWithRetry(url, options = {}, retries = 3) {
     try {
         const response = await fetch(url, options);
-        // Si no-cors est utilisé, on ne peut pas lire response.ok
         if (options.mode !== 'no-cors' && !response.ok) throw new Error('Erreur réseau');
         return response;
     } catch (err) {
@@ -69,6 +68,17 @@ async function fetchData() {
         const response = await fetchWithRetry(API_URL);
         const result = await response.json();
         statusEl.innerText = "À jour";
+        
+        // Créer la map Ticker -> Nom à partir des données Live
+        tickerToNameMap = {};
+        if (result.live) {
+            result.live.forEach(item => {
+                const ticker = (item.ticker || "").toUpperCase().trim();
+                const name = item.liste_produits || item.ticker;
+                if (ticker) tickerToNameMap[ticker] = name;
+            });
+        }
+
         renderDashboard(result.transactions || [], result.live || []);
     } catch (error) {
         statusEl.innerText = "Erreur Sync";
@@ -119,7 +129,6 @@ async function handleFormSubmit(e) {
     };
 
     try {
-        // Envoi vers Google Script
         await fetch(API_URL, { 
             method: 'POST', 
             mode: 'no-cors', 
@@ -129,13 +138,11 @@ async function handleFormSubmit(e) {
         
         document.getElementById('transactionModal').style.display = 'none';
         e.target.reset();
-        
-        // Notification visuelle
         document.getElementById('status').innerText = "Enregistré !";
         setTimeout(fetchData, 2000); 
     } catch (error) {
         console.error("Erreur d'envoi :", error);
-        alert("Erreur lors de l'enregistrement. Vérifiez votre connexion.");
+        alert("Erreur lors de l'enregistrement.");
     } finally {
         btn.innerText = originalText;
         btn.disabled = false;
@@ -154,7 +161,7 @@ function formatEuro(val) {
 function renderDashboard(transactions, liveData) {
     document.getElementById('last-update').innerText = "Dernière màj: " + new Date().toLocaleTimeString('fr-FR');
     
-    // 1. Historique
+    // 1. Historique (Amélioré avec Noms de Produits)
     const historyBody = document.getElementById('table-body-history');
     if (historyBody) {
         historyBody.innerHTML = "";
@@ -162,13 +169,21 @@ function renderDashboard(transactions, liveData) {
         
         sorted.forEach(t => {
             const d = t.date ? new Date(t.date).toLocaleDateString('fr-FR') : "-";
+            const tickerKey = (t.ticker || "").toUpperCase().trim();
+            const displayName = tickerToNameMap[tickerKey] || t.ticker || "Inconnu";
+            const frais = cleanNumber(t.frais);
+
             historyBody.innerHTML += `
-                <tr>
+                <tr class="transaction-row">
                     <td>${d}</td>
-                    <td><span style="background:#f1f5f9; padding:2px 6px; border-radius:4px; font-weight:bold">${t.ticker}</span></td>
+                    <td>
+                        <div style="font-weight: 600; color: var(--text);">${displayName}</div>
+                        <div style="font-size: 0.7rem; color: var(--text-muted); font-family: monospace;">${tickerKey}</div>
+                    </td>
                     <td>${t.quantite}</td>
                     <td>${formatEuro(t.prix)}</td>
-                    <td>${formatEuro(t.total)}</td>
+                    <td><strong style="color: var(--text);">${formatEuro(t.total)}</strong></td>
+                    <td style="font-size: 0.8rem; color: var(--text-muted);">${frais > 0 ? formatEuro(frais) : '-'}</td>
                 </tr>
             `;
         });
@@ -204,7 +219,10 @@ function renderDashboard(transactions, liveData) {
 
             liveBody.innerHTML += `
                 <tr>
-                    <td><strong>${nom}</strong></td>
+                    <td>
+                        <div style="font-weight: bold;">${nom}</div>
+                        <div style="font-size: 0.7rem; color: var(--text-muted);">${item.ticker || ''}</div>
+                    </td>
                     <td>${item.unité}</td>
                     <td>${formatEuro(cours)}</td>
                     <td>${formatEuro(sommeVal)}</td>
