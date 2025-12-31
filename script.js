@@ -173,7 +173,6 @@ function renderDashboard(transactions, liveData) {
             const tickerKey = (t.ticker || "").toUpperCase().trim();
             const displayName = tickerToNameMap[tickerKey] || t.ticker || "Inconnu";
             const frais = t.frais;
-            //const cours = liveData.map(m => m.ticker===t.ticker ? m.valeur_unitaire : 0).filter(val => val !== 0);
             const cours = liveData.flatMap(m => m.ticker === t.ticker ? [m.valeur_unitaire] : []);
 
             historyBody.innerHTML += `
