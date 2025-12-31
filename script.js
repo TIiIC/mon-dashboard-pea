@@ -117,6 +117,7 @@ async function handleFormSubmit(e) {
     const qte = parseFloat(document.getElementById('t_qte').value);
     const prix = parseFloat(document.getElementById('t_prix').value);
     const frais = parseFloat(document.getElementById('t_frais').value) || 0;
+    const nom = document.getElementById('t_ticker').value;
 
     const data = {
         date: document.getElementById('t_date').value,
@@ -125,7 +126,7 @@ async function handleFormSubmit(e) {
         prix: prix,
         frais: frais,
         total: (qte * prix) + frais,
-        type: "ACHAT"
+        nom: nom
     };
 
     try {
@@ -159,7 +160,7 @@ function formatEuro(val) {
 }
 
 function renderDashboard(transactions, liveData) {
-    document.getElementById('last-update').innerText = "Dernière màj: " + new Date().toLocaleTimeString('fr-FR');
+    document.getElementById('last-update').innerText = "Dernière màj: " + new Date().toLocaleDateString('fr-FR')+" à "+new Date().toLocaleTimeString('fr-FR');
     
     // 1. Historique (Amélioré avec Noms de Produits)
     const historyBody = document.getElementById('table-body-history');
@@ -171,7 +172,9 @@ function renderDashboard(transactions, liveData) {
             const d = t.date ? new Date(t.date).toLocaleDateString('fr-FR') : "-";
             const tickerKey = (t.ticker || "").toUpperCase().trim();
             const displayName = tickerToNameMap[tickerKey] || t.ticker || "Inconnu";
-            const frais = cleanNumber(t.frais);
+            const frais = t.frais;
+            //const cours = liveData.map(m => m.ticker===t.ticker ? m.valeur_unitaire : 0).filter(val => val !== 0);
+            const cours = liveData.flatMap(m => m.ticker === t.ticker ? [m.valeur_unitaire] : []);
 
             historyBody.innerHTML += `
                 <tr class="transaction-row">
@@ -181,9 +184,14 @@ function renderDashboard(transactions, liveData) {
                         <div style="font-size: 0.7rem; color: var(--text-muted); font-family: monospace;">${tickerKey}</div>
                     </td>
                     <td>${t.quantite}</td>
-                    <td>${formatEuro(t.prix)}</td>
-                    <td><strong style="color: var(--text);">${formatEuro(t.total)}</strong></td>
+                    <td>${formatEuro(t.prix_unitaire)}</td>
                     <td style="font-size: 0.8rem; color: var(--text-muted);">${frais > 0 ? formatEuro(frais) : '-'}</td>
+                    <td>
+                        <div style="font-weight: 1000; color: var(--text);">${formatEuro(t.total)}</div>
+                        <div style="font-weight: 200; font-size: 0.8rem; color: var(--text-muted);"> Cours : ${formatEuro(cours)}</div>
+                        <div class="${cours/t.prix_unitaire>=1?'trend-up':'trend-down'}"style="font-weight:bold; font-size: 0.8rem;">${cours-t.prix_unitaire>0? '+' : ''}${((cours/(t.prix_unitaire+(frais/t.quantite))-1)*100).toFixed(1)}%</div>
+                    </td>
+                    
                 </tr>
             `;
         });
@@ -196,6 +204,7 @@ function renderDashboard(transactions, liveData) {
         
         let totalActuel = 0;
         let totalInvesti = 0;
+        let totaldiv = 0;
         let statsMois = {};
         let statsProduit = {};
 
@@ -208,14 +217,16 @@ function renderDashboard(transactions, liveData) {
         });
 
         liveData.forEach(item => {
-            const nom = item.liste_produits || item.ticker || "Autre";
+            const nom = item.liste_produits || "Autre";
             const sommeVal = cleanNumber(item.somme);
+            const dividende = cleanNumber(item.dividende);
+            totaldiv += dividende;
             totalActuel += sommeVal;
             statsProduit[nom] = (statsProduit[nom] || 0) + sommeVal;
 
             const am = cleanNumber(item.achat_moyen);
             const cours = cleanNumber(item.valeur_unitaire);
-            const perf = am > 0 ? ((cours - am) / am) * 100 : 0;
+            const perf = am > 0 ? (((cours*item.unité+dividende) - am*item.unité) / (am*item.unité)) * 100 : 0;
 
             liveBody.innerHTML += `
                 <tr>
@@ -224,26 +235,65 @@ function renderDashboard(transactions, liveData) {
                         <div style="font-size: 0.7rem; color: var(--text-muted);">${item.ticker || ''}</div>
                     </td>
                     <td>${item.unité}</td>
-                    <td>${formatEuro(cours)}</td>
+                    <td>${formatEuro(item.achat_moyen)}</td>
+                    <td>
+                        <div class="${cours/item.achat_moyen>=1?'trend-up':'trend-down'}"style="font-weight:bold">${formatEuro(cours)}</div>
+                        <div class="${cours/item.achat_moyen>=1?'trend-up':'trend-down'}"style="font-weight:bold">${cours-item.achat_moyen>0? '+' : ''}${formatEuro(cours-item.achat_moyen)}</div>
+                    </td>
                     <td>${formatEuro(sommeVal)}</td>
+                    <td>${formatEuro(dividende)}</td>
                     <td class="${perf>=0?'trend-up':'trend-down'}" style="font-weight:bold">${perf > 0 ? '+' : ''}${perf.toFixed(1)}%</td>
                 </tr>
             `;
         });
-
-        const gain = totalActuel - totalInvesti;
-        const perfG = totalInvesti > 0 ? (gain / totalInvesti) * 100 : 0;
+        
+        const gain = totalActuel - totalInvesti + totaldiv;
+        const perfG = totalInvesti-totaldiv > 0 ? (gain / (totalInvesti-totaldiv)) * 100 : 0;
 
         document.getElementById('live-total').innerText = formatEuro(totalActuel);
-        document.getElementById('total-investi-label').innerText = "Capital Investi: " + formatEuro(totalInvesti);
-        document.getElementById('total-gain').innerText = (gain >= 0 ? "+" : "") + formatEuro(gain);
-        document.getElementById('total-gain').className = "value " + (gain >= 0 ? "trend-up" : "trend-down");
-        document.getElementById('live-perf-global').innerHTML = `<span class="${gain>=0?'trend-up':'trend-down'}" style="font-weight:bold">${perfG.toFixed(2)}%</span>`;
+        document.getElementById('total-investi-label-invest').innerText = "Capital Investi: " + formatEuro(totalInvesti-totaldiv);
+        document.getElementById('total-investi-label-reinvest').innerText = "Capital Re-investi: " + formatEuro(totaldiv);
+        document.getElementById('total-gain').innerHTML = `<span class="${gain>=0?'trend-up':'trend-down'}" style="font-weight:1000">${gain >= 0 ? "+" : ""}${formatEuro(gain)}</span>`;
+        document.getElementById('live-perf-global').innerHTML = `<span class="${gain>=0?'trend-up':'trend-down'}" style="font-weight:bold">${gain >= 0 ? "+" : ""}${perfG.toFixed(2)}%</span>`;
 
         updateCharts(statsMois, statsProduit);
     }
 }
+function updateTickerDropdown() {
+            const select = document.getElementById('t_ticker');
+            select.innerHTML = '<option value="" disabled selected>Choisir un actif...</option>';
+            
+            // On utilise la variable globale tickerToNameMap définie dans script.js
+            if (typeof tickerToNameMap !== 'undefined') {
+                // Détection auto si c'est un Objet ou une Map
+                const isMap = tickerToNameMap instanceof Map;
+                const tickers = isMap ? Array.from(tickerToNameMap.keys()) : Object.keys(tickerToNameMap);
 
+                tickers.sort().forEach(ticker => {
+                    const name = isMap ? tickerToNameMap.get(ticker) : tickerToNameMap[ticker];
+                    const option = document.createElement('option');
+                    option.value = name;
+                    option.textContent = name ? `${name} - ${ticker}` : ticker;
+                    select.appendChild(option);
+                });
+            } else {
+                console.warn("La variable tickerToNameMap est introuvable dans script.js");
+                const option = document.createElement('option');
+                option.disabled = true;
+                option.textContent = "Erreur: Liste introuvable";
+                select.appendChild(option);
+            }
+        }
+
+        // Gestion de l'affichage de la modal
+        document.getElementById('openModalBtn').addEventListener('click', () => {
+            updateTickerDropdown();
+            document.getElementById('transactionModal').style.display = 'flex';
+        });
+        
+        document.getElementById('closeModalBtn').addEventListener('click', () => {
+            document.getElementById('transactionModal').style.display = 'none';
+        });
 function updateCharts(dataMois, dataProduit) {
     const bCtx = document.getElementById('barChart');
     if (bCtx && bCtx.getContext) {
