@@ -298,6 +298,72 @@
         .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
 
         #closeModalBtn:hover { color: var(--text) !important; text-decoration: underline; }
+
+        /* --- STYLE RESPONSIVE MOBILE POUR TABLEAUX --- */
+        @media (max-width: 768px) {
+            .tab-content { padding: 15px; }
+
+            /* On cache les entêtes de tableau classiques */
+            thead { display: none; }
+
+            /* On transforme les tableaux en blocs */
+            table, tbody, tr, td { display: block; width: 100%; }
+
+            tr {
+                margin-bottom: 15px;
+                background: var(--card);
+                border: 1px solid var(--border);
+                border-radius: 16px;
+                box-shadow: var(--shadow);
+                overflow: hidden;
+            }
+
+            /* Chaque cellule devient une ligne flexible */
+            td {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                text-align: right;
+                padding: 12px 16px;
+                border-bottom: 1px solid var(--border);
+                font-size: 0.95rem;
+                min-height: 48px;
+            }
+            
+            td:last-child { border-bottom: none; }
+
+            /* Injection automatique des libellés (Labels) */
+            td::before {
+                content: attr(data-label); /* Sécurité */
+                font-weight: 700;
+                color: var(--text-muted);
+                font-size: 0.8rem;
+                text-transform: uppercase;
+                margin-right: 15px;
+            }
+
+            /* --- Configuration Tableau LIVE (Positions) --- */
+            /* 5 colonnes générées par JS : Actif, Unités, Cours, Valeur, Perf */
+            #table-body-live td:nth-of-type(1)::before { content: "Actif"; }
+            #table-body-live td:nth-of-type(2)::before { content: "Unités"; }
+            #table-body-live td:nth-of-type(3)::before { content: "Moyenne d'Achat"; }
+            #table-body-live td:nth-of-type(4)::before { content: "Cours"; }
+            #table-body-live td:nth-of-type(5)::before { content: "Valeur"; }
+            #table-body-live td:nth-of-type(6)::before { content: "Dividendes"; }
+            #table-body-live td:nth-of-type(7)::before { content: "Performance"; }
+
+            /* --- Configuration Tableau HISTORY (Transactions) --- */
+            /* 6 colonnes générées par JS : Date, Actif, Qté, PU, Total, Frais */
+            #table-body-history td:nth-of-type(1)::before { content: "Date"; }
+            #table-body-history td:nth-of-type(2)::before { content: "Actif"; }
+            #table-body-history td:nth-of-type(3)::before { content: "Qté"; }
+            #table-body-history td:nth-of-type(4)::before { content: "P.U."; }
+            #table-body-history td:nth-of-type(5)::before { content: "Frais"; }
+            #table-body-history td:nth-of-type(6)::before { content: "Total"; }
+
+            /* Alignement spécifique pour les éléments complexes (divs dans td) */
+            td > div { text-align: right; }
+        }
     </style>
 </head>
 <body>
@@ -325,8 +391,8 @@
             <div class="card">
                 <h3>Gain / Perte Totale</h3>
                 <div class="value" id="total-gain">0,00 €</div>
-                <div class = "sub" id="total-investi-label-invest" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">Capital Investi: --</div>
-                <div class = "sub" id="total-investi-label-reinvest" style="font-size: 0.85rem; color: var(--text-muted);">Capital Re-investi: --</div>
+                <div id="total-investi-label-invest" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">Capital Investi: --</div>
+                <div id="total-investi-label-reinvest" style="font-size: 0.85rem; color: var(--text-muted);">Capital Re-investi: --</div>
             </div>
         </div>
 
@@ -350,6 +416,7 @@
             <table>
                 <thead>
                     <tr>
+                        <!-- Ajustement des entêtes pour correspondre au JS (5 colonnes) -->
                         <th>Actif</th>
                         <th>Unités</th>
                         <th>Moyenne d'Achat</th>
@@ -372,6 +439,7 @@
             <table style="margin-top: 10px;">
                 <thead>
                     <tr>
+                        <!-- Ajustement pour correspondre à l'ordre JS : Date, Actif, Qté, PU, Total, Frais -->
                         <th>Date</th>
                         <th>Actif</th>
                         <th>Qté</th>
