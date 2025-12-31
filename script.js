@@ -160,9 +160,9 @@ function formatEuro(val) {
 }
 
 function renderDashboard(transactions, liveData) {
-    document.getElementById('last-update').innerText = "Dernière màj: " + new Date().toLocaleDateString('fr-FR')+" à "+new Date().toLocaleTimeString('fr-FR');
+    const now = new Date();
+    document.getElementById('last-update').innerText = "Dernière màj: " + now.toLocaleDateString('fr-FR') + " à " + now.toLocaleTimeString('fr-FR',{ hour: '2-digit', minute: '2-digit' });
     
-    // 1. Historique (Amélioré avec Noms de Produits)
     const historyBody = document.getElementById('table-body-history');
     if (historyBody) {
         historyBody.innerHTML = "";
