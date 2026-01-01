@@ -196,10 +196,10 @@ function renderDashboard(transactions, liveData) {
         });
     }
 
-    // 2. Dashboard
-    const liveBody = document.getElementById('table-body-live');
-    if (liveBody) {
-        liveBody.innerHTML = "";
+    // 2. Dashboard - TRANSFORMATION EN CARTES
+    const gridContainer = document.getElementById('positions-grid');
+    if (gridContainer) {
+        gridContainer.innerHTML = ""; // Clear existing content
         
         let totalActuel = 0;
         let totalInvesti = 0;
@@ -207,6 +207,7 @@ function renderDashboard(transactions, liveData) {
         let statsMois = {};
         let statsProduit = {};
 
+        // Calculs préliminaires (identique à avant)
         transactions.forEach(t => {
             const val = cleanNumber(t.total);
             totalInvesti += val;
@@ -215,6 +216,7 @@ function renderDashboard(transactions, liveData) {
             statsMois[label] = (statsMois[label] || 0) + val;
         });
 
+        // Génération des cartes
         liveData.forEach(item => {
             const nom = item.liste_produits || "Autre";
             const sommeVal = cleanNumber(item.somme);
@@ -225,34 +227,79 @@ function renderDashboard(transactions, liveData) {
 
             const am = cleanNumber(item.achat_moyen);
             const cours = cleanNumber(item.valeur_unitaire);
-            const perf = am > 0 ? (((cours*item.unité+dividende) - am*item.unité) / (am*item.unité)) * 100 : 0;
+            // Perf = (Valeur Totale + Dividendes - Coût Total) / Coût Total
+            const coutTotal = am * item.unité;
+            const valeurTotale = (cours * item.unité) + dividende;
+            const perf = coutTotal > 0 ? ((valeurTotale - coutTotal) / coutTotal) * 100 : 0;
+            const isPos = perf >= 0;
 
-            liveBody.innerHTML += `
-                <tr>
-                    <td>
-                        <div style="font-weight: bold;">${nom}</div>
-                        <div style="font-size: 0.7rem; color: var(--text-muted);">${item.ticker || ''}</div>
-                    </td>
-                    <td>${item.unité}</td>
-                    <td>${formatEuro(item.achat_moyen)}</td>
-                    <td>
-                        <div class="${cours/item.achat_moyen>=1?'trend-up':'trend-down'}"style="font-weight:bold">${formatEuro(cours)}</div>
-                        <div class="${cours/item.achat_moyen>=1?'trend-up':'trend-down'}"style="font-weight:bold">${cours-item.achat_moyen>0? '+' : ''}${formatEuro(cours-item.achat_moyen)}</div>
-                    </td>
-                    <td>${formatEuro(sommeVal)}</td>
-                    <td>${formatEuro(dividende)}</td>
-                    <td class="${perf>=0?'trend-up':'trend-down'}" style="font-weight:bold">${perf > 0 ? '+' : ''}${perf.toFixed(1)}%</td>
-                </tr>
+            const diffCours = cours - am;
+            const isDiffPos = diffCours >= 0;
+            
+            gridContainer.innerHTML += `
+                <div class="position-card">
+                    <!-- HEADER -->
+                    <div class="pos-header" style="margin-bottom: 12px;">
+                        <div class="pos-title-group">
+                            <div class="pos-name">${nom}</div>
+                            <div class="pos-ticker">${item.ticker || '---'}</div>
+                        </div>
+                        <div class="pos-perf-badge ${isPos ? 'perf-up' : 'perf-down'}">
+                            ${isPos ? '▲' : '▼'} ${Math.abs(perf).toFixed(2)}%
+                        </div>
+                    </div>
+                    
+                    <!-- BODY : Calcul style Ticket de caisse -->
+                    <div style="background-color: var(--bg); padding: 12px; border-radius: 8px; margin-bottom: 15px; border: 1px solid var(--border);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <div class="pos-label" style="margin:0;">Valeur</div>
+                            <div class="pos-value-main" style="font-size: 1rem;">${formatEuro(sommeVal)}</div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <div class="pos-label" style="margin:0;">Dividendes</div>
+                            <div class="pos-value-main" style="font-size: 1rem; color: var(--text-muted);">${dividende === 0 ? '-- €' : formatEuro(dividende)}</div>
+                        </div>
+                        
+                        <div style="border-top: 1px dashed var(--text-muted); opacity: 0.3; margin: 8px 0;"></div>
+                        
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div class="pos-label" style="margin:0; font-weight: 800; color: var(--text);">TOTAL</div>
+                            <div class="pos-value-main" style="font-size: 1.1rem; color: var(--text);">${formatEuro(sommeVal + dividende)}</div>
+                        </div>
+                    </div>
+
+                    <!-- FOOTER : Petit tableau de détails -->
+                    <div class="pos-footer" style="display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 5px; border-top: none; padding-top: 0;">
+                        <div class="pos-stat">
+                            <div class="pos-label">Unités</div>
+                            <div class="pos-stat-val">${item.unité}</div>
+                        </div>
+                        <div class="pos-stat">
+                            <div class="pos-label">Moyenne</div>
+                            <div class="pos-stat-val">${formatEuro(item.achat_moyen)}</div>
+                        </div>
+                        <div class="pos-stat">
+                            <div class="pos-label">Cours</div>
+                            <div class="pos-stat-val" style="display: flex; flex-direction: column;">
+                                <span>${formatEuro(cours)}</span>
+                                <span style="font-size: 0.7rem; color: ${isDiffPos ? 'var(--up)' : 'var(--down)'}; font-weight: 700;">
+                                    ${isDiffPos ? '+' : ''}${formatEuro(diffCours)}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             `;
-        });
-        
-        const gain = totalActuel - totalInvesti + totaldiv;
-        const perfG = totalInvesti-totaldiv > 0 ? (gain / (totalInvesti-totaldiv)) * 100 : 0;
+        }); //style="display: flex; flex-direction: column; align-items: flex-end;"
 
-        document.getElementById('live-total').innerText = formatEuro(totalActuel);
-        document.getElementById('total-investi-label-invest').innerText = "Capital Investi: " + formatEuro(totalInvesti-totaldiv);
-        document.getElementById('total-investi-label-reinvest').innerText = "Capital Re-investi: " + formatEuro(totaldiv);
-        document.getElementById('total-gain').innerHTML = `<span class="${gain>=0?'trend-up':'trend-down'}" style="font-weight:1000">${gain >= 0 ? "+" : ""}${formatEuro(gain)}</span>`;
+        const gain = (totalActuel + totaldiv) - totalInvesti;
+        const perfG = totalInvesti > 0 ? (gain / totalInvesti) * 100 : 0;
+
+        document.getElementById('live-total').innerText = formatEuro(totalActuel + totaldiv);
+        document.getElementById('total-investi-label-invest').innerText = "Capital Investi : " + formatEuro(totalInvesti);
+        document.getElementById('total-investi-label-reinvest').innerText = "Dividendes Reçus : " + formatEuro(totaldiv);
+        
+        document.getElementById('total-gain').innerHTML = `<span class="${gain>=0?'trend-up':'trend-down'}" style="font-weight:800">${gain >= 0 ? "+" : ""}${formatEuro(gain)}</span>`;
         document.getElementById('live-perf-global').innerHTML = `<span class="${gain>=0?'trend-up':'trend-down'}" style="font-weight:bold">${gain >= 0 ? "+" : ""}${perfG.toFixed(2)}%</span>`;
 
         updateCharts(statsMois, statsProduit);
@@ -302,7 +349,7 @@ function updateCharts(dataMois, dataProduit) {
             data: { 
                 labels: Object.keys(dataMois), 
                 datasets: [{ 
-                    label: 'Investi (€)', 
+                    label: 'Investi', 
                     data: Object.values(dataMois), 
                     backgroundColor: '#3b82f6',
                     borderRadius: 4
@@ -311,8 +358,34 @@ function updateCharts(dataMois, dataProduit) {
             options: { 
                 responsive: true, 
                 maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: { y: { beginAtZero: true, grid: { display: false } } }
+                plugins: { 
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                if (context.parsed.y !== null) {
+                                    label += new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(context.parsed.y);
+                                }
+                                return label;
+                            }
+                        }
+                    }
+                },
+                scales: { 
+                    y: { 
+                        beginAtZero: true, 
+                        grid: { display: false },
+                        ticks: {
+                            callback: function(value) {
+                                return value + ' €';
+                            }
+                        }
+                    } 
+                }
             }
         });
     }
@@ -325,7 +398,8 @@ function updateCharts(dataMois, dataProduit) {
             data: { 
                 labels: Object.keys(dataProduit), 
                 datasets: [{ 
-                    data: Object.values(dataProduit), 
+                    data: Object.values(dataProduit),
+                    label: 'Valeur',
                     backgroundColor: ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'],
                     borderWidth: 2,
                     borderColor: '#ffffff'
@@ -335,7 +409,30 @@ function updateCharts(dataMois, dataProduit) {
                 responsive: true, 
                 maintainAspectRatio: false, 
                 cutout: '65%',
-                plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 15, font: { size: 11 } } } } 
+                plugins: { 
+                    legend: { position: 'bottom', labels: { boxWidth: 12, padding: 15, font: { size: 11 } } },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                let value = context.parsed;
+                                
+                                // Calcul du pourcentage
+                                let total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                let percentage = total > 0 ? ((value / total) * 100).toFixed(2) : 0;
+
+                                if (label) {
+                                    label += ' : ';
+                                }
+                                
+                                label += new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value);
+                                label += ` (${percentage} %)`;
+                                
+                                return label;
+                            }
+                        }
+                    }
+                } 
             }
         });
     }

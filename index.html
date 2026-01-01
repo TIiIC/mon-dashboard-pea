@@ -40,13 +40,15 @@
         /* Mode Sombre (Détection Automatique) */
         @media (prefers-color-scheme: dark) {
             :root {
-                --bg: #0f172a;       /* Slate 900 */
-                --card: #1e293b;     /* Slate 800 */
-                --text: #f1f5f9;     /* Slate 100 */
+                --bg: #0f172a;       
+                --card: #1e293b;     
+                --text: #f1f5f9;     
                 --text-muted: #94a3b8;
-                --border: #334155;   /* Slate 700 */
-                --primary: #3b82f6;  /* Blue 500 (plus lumineux sur fond sombre) */
+                --border: #334155;   
+                --primary: #3b82f6;  
                 --primary-light: #1e3a8a;
+                --up-bg: rgba(16, 185, 129, 0.2);
+                --down-bg: rgba(239, 68, 68, 0.2);
                 --shadow: 0 10px 15px -3px rgb(0 0 0 / 0.5);
                 --modal-overlay: rgba(0, 0, 0, 0.8);
                 --input-bg: #0f172a;
@@ -158,6 +160,98 @@
         
         .chart-container { position: relative; height: 260px; width: 100%; }
 
+        /* --- STYLES CARTES DE POSITION --- */
+        .positions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(450px, 1fr));
+            gap: 20px;
+            margin-top: 10px;
+        }
+
+        .position-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            transition: transform 0.2s, box-shadow 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .position-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 20px -5px rgba(0, 0, 0, 0.15);
+            border-color: var(--primary);
+        }
+
+        .pos-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 15px;
+            gap: 10px;
+        }
+
+        .pos-title-group { display: flex; flex-direction: column; flex : 1; min-width: 0; }
+        .pos-name { 
+            font-weight: 700;
+            color: var(--text);
+            font-size: 1.05rem;
+            margin-bottom: 4px;
+            margin-right: 5px;
+            word-wrap: break-word;
+        }
+        .pos-ticker { 
+            font-size: 0.75rem; 
+            color: var(--text-muted); 
+            background: var(--bg); 
+            border: 1px solid var(--border);
+            padding: 2px 8px; 
+            border-radius: 6px; 
+            align-self: flex-start;
+            font-weight: 600;
+        }
+
+        .pos-perf-badge {
+            font-size: 0.85rem;
+            padding: 6px 12px;
+            border-radius: 12px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .perf-up { background: var(--up-bg); color: var(--up); }
+        .perf-down { background: var(--down-bg); color: var(--down); }
+
+        .pos-body {
+            margin-bottom: 15px;
+        }
+
+        .pos-value-main {
+            font-size: 1.75rem;
+            font-weight: 800;
+            color: var(--text);
+            letter-spacing: -0.03em;
+        }
+        
+        .pos-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 0.05em; }
+
+        .pos-footer {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            padding-top: 15px;
+            border-top: 1px solid var(--border);
+        }
+
+        .pos-stat { display: flex; flex-direction: column; text-align: center;}
+        .pos-stat-val { font-size: 0.95rem; font-weight: 600; color: var(--text); text-align: center; }
+
         table { width: 100%; border-collapse: collapse; margin-top: 5px; }
         
         th { 
@@ -204,25 +298,38 @@
             display: inline-block;
         }
 
-        .fab {
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            width: 60px;
-            height: 60px;
-            background: var(--primary);
-            color: white;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 28px;
-            box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.5);
-            cursor: pointer;
-            border: none;
-            z-index: 100;
-            transition: transform 0.2s, background-color 0.2s;
+        .fab { 
+            position: fixed; 
+            bottom: 30px; 
+            right: 30px; 
+            width: 60px; 
+            height: 60px; 
+            background: var(--primary); 
+            color: white; 
+            border-radius: 50%; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            font-size: 50px;
+            line-height: 0;
+            box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.5); 
+            cursor: pointer; 
+            border: none; 
+            z-index: 100; 
+            transition: transform 0.2s, background-color 0.2s; 
+            padding: 0;
+            gap : 0;
         }
+
+        .fab span {
+            font-size: 60px;
+            font-weight: 900;
+            line-height: 1;
+            display: block;
+            transform: translateY(-6px);
+            user-select: none;
+        }
+
         .fab:hover { transform: scale(1.05); background-color: #1d4ed8; }
         .fab:active { transform: scale(0.95); }
 
@@ -342,16 +449,6 @@
                 margin-right: 15px;
             }
 
-            /* --- Configuration Tableau LIVE (Positions) --- */
-            /* 5 colonnes générées par JS : Actif, Unités, Cours, Valeur, Perf */
-            #table-body-live td:nth-of-type(1)::before { content: "Actif"; }
-            #table-body-live td:nth-of-type(2)::before { content: "Unités"; }
-            #table-body-live td:nth-of-type(3)::before { content: "Moyenne d'Achat"; }
-            #table-body-live td:nth-of-type(4)::before { content: "Cours"; }
-            #table-body-live td:nth-of-type(5)::before { content: "Valeur"; }
-            #table-body-live td:nth-of-type(6)::before { content: "Dividendes"; }
-            #table-body-live td:nth-of-type(7)::before { content: "Performance"; }
-
             /* --- Configuration Tableau HISTORY (Transactions) --- */
             /* 6 colonnes générées par JS : Date, Actif, Qté, PU, Total, Frais */
             #table-body-history td:nth-of-type(1)::before { content: "Date"; }
@@ -391,8 +488,8 @@
             <div class="card">
                 <h3>Gain / Perte Totale</h3>
                 <div class="value" id="total-gain">0,00 €</div>
-                <div id="total-investi-label-invest" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">Capital Investi: --</div>
-                <div id="total-investi-label-reinvest" style="font-size: 0.85rem; color: var(--text-muted);">Capital Re-investi: --</div>
+                <div id="total-investi-label-invest" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">Capital Investi : --</div>
+                <div id="total-investi-label-reinvest" style="font-size: 0.85rem; color: var(--text-muted);">Capital Re-investi : --</div>
             </div>
         </div>
 
@@ -410,24 +507,14 @@
                 </div>
             </div>
         </div>
-
-        <div class="card" style="padding: 10px; overflow-x: auto; margin-top: 20px;">
-            <h3 style="padding: 15px 10px 5px 10px;">Positions Actuelles</h3>
-            <table>
-                <thead>
-                    <tr>
-                        <!-- Ajustement des entêtes pour correspondre au JS (5 colonnes) -->
-                        <th>Actif</th>
-                        <th>Unités</th>
-                        <th>Moyenne d'Achat</th>
-                        <th>Cours</th>
-                        <th>Valeur</th>
-                        <th>Dividendes</th>
-                        <th>Performance</th>
-                    </tr>
-                </thead>
-                <tbody id="table-body-live"></tbody>
-            </table>
+        
+        <!-- Section Positions Actuelles transformée en Grille -->
+        <div style="margin-top: 25px;">
+            <h3 style="font-size: 0.9rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 15px; padding-left: 5px;">Positions Actuelles</h3>
+            <div id="positions-grid" class="positions-grid">
+                <!-- Les cartes seront injectées ici par JS -->
+                <div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 40px;">Chargement des positions...</div>
+            </div>
         </div>
     </main>
 
@@ -454,7 +541,7 @@
         </div>
     </main>
 
-    <button class="fab" id="openModalBtn">+</button>
+    <button class="fab" id="openModalBtn"><span>+</span></button>
 
     <div class="modal" id="transactionModal">
         <div class="modal-content">
