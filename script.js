@@ -86,7 +86,76 @@ async function fetchData() {
     }
 }
 
+/**
+ * Éléments du Ticket de Caisse
+ */
+const getTicketElements = () => ({
+    qte: document.getElementById('t_qte'),
+    prix: document.getElementById('t_prix'),
+    frais: document.getElementById('t_frais'),
+    subtotal: document.getElementById('display-subtotal'),
+    total: document.getElementById('display-total')
+});
+
+function updateTicketCalculations() {
+    const els = getTicketElements();
+    const qte = parseFloat(els.qte.value) || 0;
+    const prix = parseFloat(els.prix.value) || 0;
+    const frais = parseFloat(els.frais.value) || 0;
+    
+    const subtotalValue = qte * prix;
+    const totalValue = subtotalValue + frais;
+
+    if(els.subtotal) els.subtotal.textContent = subtotalValue.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
+    if(els.total) els.total.textContent = totalValue.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
+}
+
+function resetTicketDisplay() {
+    const els = getTicketElements();
+    if(els.subtotal) els.subtotal.textContent = "0,00 €";
+    if(els.total) els.total.textContent = "0,00 €";
+}
+
 function setupEventListeners() {
+    const openBtn = document.getElementById('openModalBtn');
+    const closeBtn = document.getElementById('closeModalBtn');
+    const form = document.getElementById('transactionForm');
+
+    if(openBtn) {
+        openBtn.addEventListener('click', () => {
+            updateTickerDropdown();
+            document.getElementById('transactionModal').style.display = 'flex';
+            document.getElementById('t_date').valueAsDate = new Date();
+            resetTicketDisplay(); // Remise à zéro visuelle
+        });
+    }
+    
+    if(closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            document.getElementById('transactionModal').style.display = 'none';
+        });
+    }
+
+    if(form) {
+        form.addEventListener('submit', handleFormSubmit);
+        
+        // Ajout des écouteurs pour le calcul dynamique en temps réel
+        const els = getTicketElements();
+        [els.qte, els.prix, els.frais].forEach(input => {
+            if(input) input.addEventListener('input', updateTicketCalculations);
+        });
+    }
+
+    document.getElementById('status').addEventListener('dblclick', () => {
+        const newUrl = prompt("Modifier l'URL de l'API ?", API_URL);
+        if (newUrl) {
+            localStorage.setItem('pea_api_url', newUrl);
+            location.reload();
+        }
+    });
+}
+
+/**function setupEventListeners() {
     document.getElementById('openModalBtn').addEventListener('click', () => {
         document.getElementById('transactionModal').style.display = 'flex';
         document.getElementById('t_date').valueAsDate = new Date();
@@ -105,7 +174,7 @@ function setupEventListeners() {
             location.reload();
         }
     });
-}
+}*/
 
 async function handleFormSubmit(e) {
     e.preventDefault();
@@ -296,7 +365,7 @@ function renderDashboard(transactions, liveData) {
         const perfG = totalInvesti > 0 ? (gain / totalInvesti) * 100 : 0;
 
         document.getElementById('live-total').innerText = formatEuro(totalActuel);
-        document.getElementById('total-investi-label-invest').innerText = "Capital Investi : " + formatEuro(totalInvesti);
+        document.getElementById('total-investi-label-invest').innerText = "Capital Investi : " + formatEuro(totalInvesti-totaldiv);
         document.getElementById('total-investi-label-reinvest').innerText = "Dividendes Reçus : " + formatEuro(totaldiv);
         
         document.getElementById('total-gain').innerHTML = `<span class="${gain>=0?'trend-up':'trend-down'}" style="font-weight:800">${gain >= 0 ? "+" : ""}${formatEuro(gain)}</span>`;

@@ -32,9 +32,12 @@
             --border: #e2e8f0;
             --up: #10b981;
             --down: #ef4444;
+            --up-bg: #dcfce7;
+            --down-bg: #fee2e2;
             --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
             --modal-overlay: rgba(15, 23, 42, 0.6);
             --input-bg: #ffffff;
+            --ticket-bg: #fff;
         }
 
         /* Mode Sombre (Détection Automatique) */
@@ -52,6 +55,7 @@
                 --shadow: 0 10px 15px -3px rgb(0 0 0 / 0.5);
                 --modal-overlay: rgba(0, 0, 0, 0.8);
                 --input-bg: #0f172a;
+                --ticket-bg: #1e293b;
             }
         }
 
@@ -450,7 +454,7 @@
             }
 
             /* --- Configuration Tableau HISTORY (Transactions) --- */
-            /* 6 colonnes générées par JS : Date, Actif, Qté, PU, Total, Frais */
+            /* 6 colonnes générées par JS : Date, Actif, Qté, PU, Frais, Total */
             #table-body-history td:nth-of-type(1)::before { content: "Date"; }
             #table-body-history td:nth-of-type(2)::before { content: "Actif"; }
             #table-body-history td:nth-of-type(3)::before { content: "Qté"; }
@@ -460,6 +464,126 @@
 
             /* Alignement spécifique pour les éléments complexes (divs dans td) */
             td > div { text-align: right; }
+        }
+
+        /* MODAL STYLE TICKET DE CAISSE */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--modal-overlay); align-items: center; justify-content: center; z-index: 200; padding: 16px; backdrop-filter: blur(4px); }
+        
+        .ticket-modal-content { 
+            background: var(--ticket-bg); 
+            padding: 30px 20px; 
+            border-radius: 4px; 
+            width: 100%; 
+            max-width: 360px; 
+            position: relative;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+            border-top: 8px solid var(--primary);
+        }
+
+        /* Dents de scie pour le style ticket */
+        .ticket-modal-content::after {
+            content: "";
+            position: absolute;
+            bottom: -10px;
+            left: 0;
+            width: 100%;
+            height: 10px;
+            background: linear-gradient(-45deg, transparent 5px, var(--ticket-bg) 5px), linear-gradient(45deg, transparent 5px, var(--ticket-bg) 5px);
+            background-size: 10px 10px;
+        }
+
+        .ticket-header {
+            text-align: center;
+            border-bottom: 2px dashed var(--border);
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+
+        .ticket-header h2 {
+            margin: 0;
+            font-size: 1.2rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 800;
+        }
+
+        .ticket-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            align-items: center;
+        }
+
+        .ticket-label {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .ticket-input-container {
+            width: 60%;
+        }
+
+        .ticket-input {
+            width: 100%;
+            border: none;
+            border-bottom: 1px solid var(--border);
+            padding: 5px 5px;
+            font-size: 1rem;
+            font-weight: 600;
+            background: transparent;
+            color: var(--text);
+            outline: none;
+            text-align: left;
+        }
+
+        .ticket-input option {
+            background-color: var(--card);
+            color: var(--text);
+        }
+
+        .ticket-input:focus {
+            border-bottom-color: var(--primary);
+        }
+
+        .ticket-total-section {
+            border-top: 2px dashed var(--border);
+            margin-top: 20px;
+            padding-top: 15px;
+        }
+
+        .total-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+        }
+
+        .total-label {
+            font-size: 1rem;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+
+        .total-amount {
+            font-size: 1.8rem;
+            font-weight: 900;
+            color: var(--primary);
+        }
+
+        .btn-ticket {
+            width: 100%;
+            margin-top: 25px;
+            padding: 15px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(37, 99, 235, 0.2);
         }
     </style>
 </head>
@@ -543,35 +667,65 @@
 
     <button class="fab" id="openModalBtn"><span>+</span></button>
 
+    <!-- MODAL STYLE TICKET DE CAISSE -->
     <div class="modal" id="transactionModal">
-        <div class="modal-content">
-            <h2 style="margin-top:0; font-size: 1.5rem; color: var(--text); letter-spacing: -0.02em; margin-bottom: 20px;">Enregistrer un achat</h2>
+        <div class="ticket-modal-content">
+            <div class="ticket-header">
+                <h2>Nouvel Achat</h2>
+                <span style="font-size: 0.6rem; color: var(--text-muted);">--- VALIDATION TRANSACTION ---</span>
+            </div>
+            
             <form id="transactionForm">
-                <div class="form-group">
-                    <label>Date de l'opération</label>
-                    <input type="date" id="t_date" required>
+                <div class="ticket-row">
+                    <span class="ticket-label">Date</span>
+                    <div class="ticket-input-container">
+                        <input type="date" id="t_date" class="ticket-input" required style="font-size: 0.9rem;">
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>Nom - Ticker (Symbole)</label>
-                    <select id="t_ticker" required>
-                        <option value="" disabled selected>Chargement des actifs...</option>
-                    </select>
-                    
+
+                <div class="ticket-row">
+                    <span class="ticket-label">Actif</span>
+                    <div class="ticket-input-container">
+                        <select id="t_ticker" class="ticket-input" required>
+                            <option value="" disabled selected>Choisir...</option>
+                        </select>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>Nombre d'unités</label>
-                    <input type="number" id="t_qte" step="any" required>
+
+                <div class="ticket-row">
+                    <span class="ticket-label">Quantité</span>
+                    <div class="ticket-input-container">
+                        <input type="number" id="t_qte" step="any" placeholder="0" class="ticket-input" required>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>Prix unitaire (€)</label>
-                    <input type="number" id="t_prix" step="any" required>
+
+                <div class="ticket-row">
+                    <span class="ticket-label">Prix Unitaire</span>
+                    <div class="ticket-input-container">
+                        <input type="number" id="t_prix" step="any" placeholder="0.00 €" class="ticket-input" required>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>Frais Divers (€)</label>
-                    <input type="number" id="t_frais" step="any" value="0">
+
+                <div class="ticket-row">
+                    <span class="ticket-label">Frais</span>
+                    <div class="ticket-input-container">
+                        <input type="number" id="t_frais" step="any" placeholder="0.00 €" class="ticket-input">
+                    </div>
                 </div>
-                <button type="submit" class="btn-submit">Confirmer l'ajout</button>
-                <button type="button" id="closeModalBtn" style="background:none; border:none; color:var(--text-muted); width:100%; margin-top:15px; cursor:pointer; font-size: 0.9rem; font-weight: 600;">Annuler</button>
+
+                <div class="ticket-total-section">
+                    <div class="total-row">
+                        <span class="total-label" style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">Total HT</span>
+                        <span id="display-subtotal" style="font-weight: 600; font-size: 0.9rem;">0,00 €</span>
+                    </div>
+                    <div class="total-row" style="margin-top: 10px;">
+                        <span class="total-label">Net à Payer</span>
+                        <span id="display-total" class="total-amount">0,00 €</span>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-submit">Valider l'opération</button>
+                <button type="button" id="closeModalBtn" style="width:100%; background:none; border:none; color:var(--text-muted); margin-top:15px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; cursor: pointer;">Annuler</button>
             </form>
         </div>
     </div>
