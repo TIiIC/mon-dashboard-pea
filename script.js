@@ -295,7 +295,7 @@ function renderDashboard(transactions, liveData) {
         const gain = (totalActuel + totaldiv) - totalInvesti;
         const perfG = totalInvesti > 0 ? (gain / totalInvesti) * 100 : 0;
 
-        document.getElementById('live-total').innerText = formatEuro(totalActuel + totaldiv);
+        document.getElementById('live-total').innerText = formatEuro(totalActuel);
         document.getElementById('total-investi-label-invest').innerText = "Capital Investi : " + formatEuro(totalInvesti);
         document.getElementById('total-investi-label-reinvest').innerText = "Dividendes Reçus : " + formatEuro(totaldiv);
         
