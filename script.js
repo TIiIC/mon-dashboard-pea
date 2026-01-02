@@ -4,6 +4,10 @@ let pieChartInstance = null;
 
 // Stockage global pour faire la correspondance Ticker -> Nom Produit
 let tickerToNameMap = {};
+// Stockage global des transactions pour filtrage
+let globalTransactions = [];
+// Stockage global des Produit pour filtrage
+let globalLive = {};
 
 document.addEventListener('DOMContentLoaded', () => {
     if (!API_URL) {
@@ -69,6 +73,8 @@ async function fetchData() {
         const result = await response.json();
         statusEl.innerText = "À jour";
         
+        // Stocker les transactions globalement
+        globalTransactions = result.transactions || [];
         // Créer la map Ticker -> Nom à partir des données Live
         tickerToNameMap = {};
         if (result.live) {
@@ -78,8 +84,8 @@ async function fetchData() {
                 if (ticker) tickerToNameMap[ticker] = name;
             });
         }
-
-        renderDashboard(result.transactions || [], result.live || []);
+        globalLive = result.live
+        renderDashboard(result.transactions || [], result.live || [], globalTransactions);
     } catch (error) {
         statusEl.innerText = "Erreur Sync";
         console.warn("Erreur de récupération des données : ", error.message);
@@ -116,10 +122,67 @@ function resetTicketDisplay() {
     if(els.total) els.total.textContent = "0,00 €";
 }
 
+window.showProductHistory = function(ticker) {
+    const modal = document.getElementById('productHistoryModal');
+    const tbody = document.getElementById('modal-history-body');
+    const title = document.getElementById('modal-history-title');
+    
+    if (!modal || !tbody) {
+        console.error("Modal historique introuvable dans le DOM");
+        return;
+    }
+
+    // Filtrer les transactions pour ce ticker
+    const targetTicker = (ticker || "").toUpperCase().trim();
+    const productTransactions = globalTransactions.filter(t => 
+        (t.ticker || "").toUpperCase().trim() === targetTicker
+    );
+    
+    // Trier par date décroissante (plus récent en haut)
+    productTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // Mettre à jour le titre
+    const productName = tickerToNameMap[targetTicker] || targetTicker || "Produit Inconnu";
+    if(title) title.textContent = `${productName}`;
+
+    // Remplir le tableau
+    tbody.innerHTML = "";
+    if (productTransactions.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:20px;">Aucune transaction trouvée.</td></tr>`;
+    } else {
+        const displayName = tickerToNameMap[targetTicker] || targetTicker || "Inconnu";
+        const cours = globalLive.flatMap(m => m.ticker === targetTicker ? [m.valeur_unitaire] : []);
+        
+        productTransactions.forEach(t => {
+            //const perf = cours/(t.prix_unitaire+(t.frais/t.quantite))
+            const perf = t.prix_unitaire > 0 ? ((cours - (t.prix_unitaire+(t.frais/t.quantite))) / (t.prix_unitaire+(t.frais/t.quantite))) * 100 : 0;
+            const isPos = perf >= 0;
+            const d = t.date ? new Date(t.date).toLocaleDateString('fr-FR') : "-";
+            tbody.innerHTML += 
+            `
+            <tr class="transaction-row">
+                    <td style = "text-align:center;">${d}</td>
+                    <td style = "text-align:center;">${t.quantite}</td>
+                    <td style = "text-align:center;">${formatEuro(t.prix_unitaire)}</td>
+                    <td style="font-size: 0.8rem; color: var(--text-muted);text-align:center;">${t.frais > 0 ? formatEuro(t.frais) : '-'}</td>
+                    <td style="text-align:center;">
+                        <div style="font-weight: 1000; color: var(--text);">${formatEuro(t.total)}</div>
+                        <div class="${isPos?'trend-up':'trend-down'}"style="font-weight:bold; font-size: 0.8rem;">${isPos ? '▲' : '▼'} ${Math.abs(perf).toFixed(2)}%</div>
+                    </td>
+                    
+                </tr>
+            `;
+        });
+    }
+
+    modal.style.display = 'flex';
+};
+
 function setupEventListeners() {
     const openBtn = document.getElementById('openModalBtn');
     const closeBtn = document.getElementById('closeModalBtn');
     const form = document.getElementById('transactionForm');
+    const closeHistoryBtn = document.getElementById('closeHistoryBtn'); // Nouveau bouton fermeture historique
 
     if(openBtn) {
         openBtn.addEventListener('click', () => {
@@ -134,6 +197,24 @@ function setupEventListeners() {
         closeBtn.addEventListener('click', () => {
             document.getElementById('transactionModal').style.display = 'none';
         });
+    }
+
+    if (closeHistoryBtn) {
+        closeHistoryBtn.addEventListener('click', () => {
+            document.getElementById('productHistoryModal').style.display = 'none';
+        });
+    }
+
+    // Fermer les modales si on clique en dehors (Overlay)
+    window.onclick = function(event) {
+        const transModal = document.getElementById('transactionModal');
+        const histModal = document.getElementById('productHistoryModal');
+        if (event.target == transModal) {
+            transModal.style.display = "none";
+        }
+        if (event.target == histModal) {
+            histModal.style.display = "none";
+        }
     }
 
     if(form) {
@@ -154,27 +235,6 @@ function setupEventListeners() {
         }
     });
 }
-
-/**function setupEventListeners() {
-    document.getElementById('openModalBtn').addEventListener('click', () => {
-        document.getElementById('transactionModal').style.display = 'flex';
-        document.getElementById('t_date').valueAsDate = new Date();
-    });
-    
-    document.getElementById('closeModalBtn').addEventListener('click', () => {
-        document.getElementById('transactionModal').style.display = 'none';
-    });
-
-    document.getElementById('transactionForm').addEventListener('submit', handleFormSubmit);
-
-    document.getElementById('status').addEventListener('dblclick', () => {
-        const newUrl = prompt("Modifier l'URL de l'API ?", API_URL);
-        if (newUrl) {
-            localStorage.setItem('pea_api_url', newUrl);
-            location.reload();
-        }
-    });
-}*/
 
 async function handleFormSubmit(e) {
     e.preventDefault();
@@ -306,7 +366,7 @@ function renderDashboard(transactions, liveData) {
             const isDiffPos = diffCours >= 0;
             
             gridContainer.innerHTML += `
-                <div class="position-card">
+                <div class="position-card" onclick="showProductHistory('${item.ticker}')">
                     <!-- HEADER -->
                     <div class="pos-header" style="margin-bottom: 12px;">
                         <div class="pos-title-group">
@@ -359,7 +419,7 @@ function renderDashboard(transactions, liveData) {
                     </div>
                 </div>
             `;
-        }); //style="display: flex; flex-direction: column; align-items: flex-end;"
+        });
 
         const gain = (totalActuel + totaldiv) - totalInvesti;
         const perfG = totalInvesti > 0 ? (gain / totalInvesti) * 100 : 0;
