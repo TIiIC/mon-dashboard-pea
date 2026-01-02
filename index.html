@@ -38,6 +38,7 @@
             --modal-overlay: rgba(15, 23, 42, 0.6);
             --input-bg: #ffffff;
             --ticket-bg: #fff;
+            --headers: #aaaaaa;
         }
 
         /* Mode Sombre (Détection Automatique) */
@@ -56,6 +57,7 @@
                 --modal-overlay: rgba(0, 0, 0, 0.8);
                 --input-bg: #0f172a;
                 --ticket-bg: #1e293b;
+                --headers: #151c29;
             }
         }
 
@@ -92,9 +94,9 @@
             background: var(--card);
             border-bottom: 1px solid var(--border);
             position: sticky;
-            top: 73px; /* Hauteur approx du header */
+            top: 69px; /* Hauteur approx du header */
             z-index: 50;
-            padding: 0 10px;
+            padding: 0 0;
         }
         .nav-tab {
             flex: 1;
@@ -110,7 +112,7 @@
         .nav-tab.active {
             color: var(--primary);
             border-bottom-color: var(--primary);
-            background: transparent; /* Suppression du fond gris */
+            background: var(--headers);
         }
         .nav-tab:hover {
             color: var(--primary);
@@ -666,14 +668,12 @@
             <table style="margin-top: 10px;">
                 <thead>
                     <tr>
-                        <!-- Ajustement pour correspondre à l'ordre JS : Date, Actif, Qté, PU, Total, Frais -->
                         <th>Date</th>
                         <th>Actif</th>
                         <th>Qté</th>
                         <th>P.U.</th>
                         <th>Frais</th>
                         <th>Total</th>
-                        
                     </tr>
                 </thead>
                 <tbody id="table-body-history"></tbody>
