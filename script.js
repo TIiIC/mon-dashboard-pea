@@ -8,6 +8,8 @@ let tickerToNameMap = {};
 let globalTransactions = [];
 // Stockage global des Produit pour filtrage
 let globalLive = {};
+// Stockage temporaire des transactions affichées pour retrouver l'objet au clic
+let displayedTransactions = []; 
 
 document.addEventListener('DOMContentLoaded', () => {
     if (!API_URL) {
@@ -85,7 +87,7 @@ async function fetchData() {
             });
         }
         globalLive = result.live
-        renderDashboard(result.transactions || [], result.live || [], globalTransactions);
+        renderDashboard(result.transactions || [], result.live || []);
     } catch (error) {
         statusEl.innerText = "Erreur Sync";
         console.warn("Erreur de récupération des données : ", error.message);
@@ -151,19 +153,25 @@ window.showProductHistory = function(ticker) {
         tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:20px;">Aucune transaction trouvée.</td></tr>`;
     } else {
         const displayName = tickerToNameMap[targetTicker] || targetTicker || "Inconnu";
-        const cours = globalLive.flatMap(m => m.ticker === targetTicker ? [m.valeur_unitaire] : []);
+        const coursArr = globalLive.flatMap(m => (m.ticker||"").toUpperCase() === targetTicker ? [m.valeur_unitaire] : []);
+        const cours = coursArr.length > 0 ? parseFloat(coursArr[0]) : 0;
+
+        if(document.getElementById('modal-history-cours')) {
+            document.getElementById('modal-history-cours').innerText = "Cours actuel : " + formatEuro(cours);
+        }
         
         productTransactions.forEach(t => {
-            //const perf = cours/(t.prix_unitaire+(t.frais/t.quantite))
-            const perf = t.prix_unitaire > 0 ? ((cours - (t.prix_unitaire+(t.frais/t.quantite))) / (t.prix_unitaire+(t.frais/t.quantite))) * 100 : 0;
+            const prix = t.prix_unitaire;
+            const coutRevient = prix + (t.frais / t.quantite);
+            const perf = (coutRevient > 0 && cours > 0) ? ((cours - coutRevient) / coutRevient) * 100 : 0;
             const isPos = perf >= 0;
             const d = t.date ? new Date(t.date).toLocaleDateString('fr-FR') : "-";
-            tbody.innerHTML += 
-            `
+            
+            tbody.innerHTML += `
             <tr class="transaction-row">
                     <td style = "text-align:center;">${d}</td>
                     <td style = "text-align:center;">${t.quantite}</td>
-                    <td style = "text-align:center;">${formatEuro(t.prix_unitaire)}</td>
+                    <td style = "text-align:center;">${formatEuro(prix)}</td>
                     <td style="font-size: 0.8rem; color: var(--text-muted);text-align:center;">${t.frais > 0 ? formatEuro(t.frais) : '-'}</td>
                     <td style="text-align:center;">
                         <div style="font-weight: 1000; color: var(--text);">${formatEuro(t.total)}</div>
@@ -178,11 +186,94 @@ window.showProductHistory = function(ticker) {
     modal.style.display = 'flex';
 };
 
+// Fonction appelée au clic sur une ligne de transaction (Mobile & Desktop)
+window.openTransactionDetail = function(index) {
+    const t = displayedTransactions[index];
+    if (!t) return;
+
+    const modal = document.getElementById('transactionDetailModal');
+    if(!modal) return;
+
+    // Récupération des infos
+    const ticker = (t.ticker || "").toUpperCase().trim();
+    const name = tickerToNameMap[ticker] || ticker;
+    const coursArr = globalLive.flatMap(m => (m.ticker||"").toUpperCase() === ticker ? [m.valeur_unitaire] : []);
+    const cours = coursArr.length > 0 ? parseFloat(coursArr[0]) : 0;
+    
+    // Calculs
+    const prix = t.prix_unitaire
+    const totalHT = t.quantite * prix;
+    const coutRevient = prix + (t.frais / t.quantite);
+    const perf = (coutRevient > 0 && cours > 0) ? ((cours - coutRevient) / coutRevient) * 100 : 0;
+    const isPos = perf >= 0;
+
+    // Remplissage Header
+    document.getElementById('td-date').innerText = new Date(t.date).toLocaleDateString('fr-FR');
+    document.getElementById('td-name').innerText = name;
+    document.getElementById('td-ticker').innerText = ticker;
+    document.getElementById('td-cours').innerText = formatEuro(cours);
+    
+    const perfEl = document.getElementById('td-perf');
+    perfEl.innerHTML = `${isPos ? '▲' : '▼'} ${Math.abs(perf).toFixed(2)}%`;
+    perfEl.className = `pos-perf-badge ${isPos ? 'perf-up' : 'perf-down'}`;
+
+    // Remplissage Ticket
+    document.getElementById('td-qte').innerText = t.quantite;
+    document.getElementById('td-pu').innerText = formatEuro(prix);
+    document.getElementById('td-frais').innerText = formatEuro(t.frais);
+    document.getElementById('td-total-ht').innerText = formatEuro(totalHT);
+    document.getElementById('td-total-net').innerText = formatEuro(t.total);
+
+    // Setup Bouton Supprimer
+    const btnDel = document.getElementById('btn-delete-transaction');
+    btnDel.onclick = () => deleteTransaction(t);
+
+    modal.style.display = 'flex';
+};
+
+async function deleteTransaction(transaction) {
+    if (!confirm("Êtes-vous sûr de vouloir supprimer cette transaction ?\nCette action est irréversible.")) {
+        return;
+    }
+
+    const btn = document.getElementById('btn-delete-transaction');
+    const originalText = btn.innerText;
+    btn.innerText = "Suppression...";
+    btn.disabled = true;
+
+    // On crée l'objet à envoyer pour suppression (type DELETE)
+    const dataToDelete = {
+        ...transaction,
+        type: "DELETE" 
+    };
+
+    try {
+        await fetch(API_URL, { 
+            method: 'POST', 
+            mode: 'no-cors', 
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dataToDelete) 
+        });
+        
+        document.getElementById('transactionDetailModal').style.display = 'none';
+        document.getElementById('status').innerText = "Supprimé !";
+        setTimeout(fetchData, 2000); 
+    } catch (error) {
+        console.error("Erreur suppression :", error);
+        alert("Erreur lors de la suppression.");
+    } finally {
+        btn.innerText = originalText;
+        btn.disabled = false;
+    }
+}
+
 function setupEventListeners() {
     const openBtn = document.getElementById('openModalBtn');
     const closeBtn = document.getElementById('closeModalBtn');
     const form = document.getElementById('transactionForm');
-    const closeHistoryBtn = document.getElementById('closeHistoryBtn'); // Nouveau bouton fermeture historique
+    const closeHistoryBtn = document.getElementById('closeHistoryBtn');
+
+    const closeDetailBtn = document.getElementById('closeDetailBtn');
 
     if(openBtn) {
         openBtn.addEventListener('click', () => {
@@ -205,15 +296,12 @@ function setupEventListeners() {
         });
     }
 
+    if(closeDetailBtn) closeDetailBtn.addEventListener('click', () => document.getElementById('transactionDetailModal').style.display = 'none');
+
     // Fermer les modales si on clique en dehors (Overlay)
     window.onclick = function(event) {
-        const transModal = document.getElementById('transactionModal');
-        const histModal = document.getElementById('productHistoryModal');
-        if (event.target == transModal) {
-            transModal.style.display = "none";
-        }
-        if (event.target == histModal) {
-            histModal.style.display = "none";
+        if (event.target.classList.contains('modal')) {
+            event.target.style.display = "none";
         }
     }
 
@@ -255,7 +343,8 @@ async function handleFormSubmit(e) {
         prix: prix,
         frais: frais,
         total: (qte * prix) + frais,
-        nom: nom
+        nom: nom,
+        type: "ACHAT"
     };
 
     try {
@@ -295,31 +384,37 @@ function renderDashboard(transactions, liveData) {
     const historyBody = document.getElementById('table-body-history');
     if (historyBody) {
         historyBody.innerHTML = "";
-        const sorted = [...transactions].sort((a, b) => new Date(b.date) - new Date(a.date));
+        displayedTransactions = [...transactions].sort((a, b) => new Date(b.date) - new Date(a.date));
         
-        sorted.forEach(t => {
+        displayedTransactions.forEach((t, index)=> {
             const d = t.date ? new Date(t.date).toLocaleDateString('fr-FR') : "-";
             const tickerKey = (t.ticker || "").toUpperCase().trim();
             const displayName = tickerToNameMap[tickerKey] || t.ticker || "Inconnu";
             const frais = t.frais;
-            const cours = liveData.flatMap(m => m.ticker === t.ticker ? [m.valeur_unitaire] : []);
+            const coursArr = liveData.flatMap(m => (m.ticker||"").toUpperCase() === tickerKey ? [m.valeur_unitaire] : []);
+            const cours = coursArr.length > 0 ? parseFloat(coursArr[0]) : 0;
+            const prix = t.prix_unitaire;
 
+            const coutRevient = prix + (frais/t.quantite);
+            const perf = (coutRevient > 0 && cours > 0) ? ((cours - coutRevient) / coutRevient) * 100 : 0;
+            const isPos = perf >= 0;
+            
             historyBody.innerHTML += `
-                <tr class="transaction-row">
-                    <td>${d}</td>
+                <tr class="transaction-row" onclick="openTransactionDetail(${index})">
                     <td>
+                        <div style="font-size: 0.7rem; color: var(--text-muted); font-family: monospace;">${d}</div>
                         <div style="font-weight: 600; color: var(--text);">${displayName}</div>
                         <div style="font-size: 0.7rem; color: var(--text-muted); font-family: monospace;">${tickerKey}</div>
                     </td>
-                    <td>${t.quantite}</td>
-                    <td>${formatEuro(t.prix_unitaire)}</td>
-                    <td style="font-size: 0.8rem; color: var(--text-muted);">${frais > 0 ? formatEuro(frais) : '-'}</td>
-                    <td>
-                        <div style="font-weight: 1000; color: var(--text);">${formatEuro(t.total)}</div>
-                        <div style="font-weight: 200; font-size: 0.8rem; color: var(--text-muted);"> Cours : ${formatEuro(cours)}</div>
-                        <div class="${cours/t.prix_unitaire>=1?'trend-up':'trend-down'}"style="font-weight:bold; font-size: 0.8rem;">${cours-t.prix_unitaire>0? '+' : ''}${((cours/(t.prix_unitaire+(frais/t.quantite))-1)*100).toFixed(1)}%</div>
+                    <td class="hide-mobile" style="text-align:center;">${t.quantite}</td>
+                    <td class="hide-mobile" style="text-align:center;">${formatEuro(prix)}</td>
+                    <td class="hide-mobile" style="font-size: 0.8rem; color: var(--text-muted); text-align:center;">${frais > 0 ? formatEuro(frais) : '-'}</td>
+                    <td style="text-align:right;">
+                        <div style="font-weight: 800; color: var(--text);">${formatEuro(t.total)}</div>
+                        <div class="${isPos?'trend-up':'trend-down'}" style="font-weight:bold; font-size: 0.75rem;">
+                            ${isPos ? '▲' : '▼'} ${perf.toFixed(2)}%
+                        </div>
                     </td>
-                    
                 </tr>
             `;
         });

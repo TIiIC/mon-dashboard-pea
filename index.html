@@ -454,13 +454,12 @@
             }
 
             /* --- Configuration Tableau HISTORY (Transactions) --- */
-            /* 6 colonnes générées par JS : Date, Actif, Qté, PU, Frais, Total */
-            #table-body-history td:nth-of-type(1)::before { content: "Date"; }
-            #table-body-history td:nth-of-type(2)::before { content: "Actif"; }
-            #table-body-history td:nth-of-type(3)::before { content: "Qté"; }
-            #table-body-history td:nth-of-type(4)::before { content: "P.U."; }
-            #table-body-history td:nth-of-type(5)::before { content: "Frais"; }
-            #table-body-history td:nth-of-type(6)::before { content: "Total"; }
+            /* 5 colonnes générées par JS : Date/Actif, Qté, PU, Frais, Total */
+            #table-body-history td:nth-of-type(1)::before { content: "Actif"; }
+            #table-body-history td:nth-of-type(2)::before { content: "Qté"; }
+            #table-body-history td:nth-of-type(3)::before { content: "P.U."; }
+            #table-body-history td:nth-of-type(4)::before { content: "Frais"; }
+            #table-body-history td:nth-of-type(5)::before { content: "Total"; }
 
             /* Alignement spécifique pour les éléments complexes (divs dans td) */
             td > div { text-align: right; }
@@ -603,6 +602,16 @@
         .history-table th { text-align: left; padding: 5px; border-bottom: 1px solid var(--border); font-size: 0.65rem; color: var(--text-muted); }
         .history-table td { padding: 5px; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
         .history-table tr:last-child td { border-bottom: none; }
+
+        .show-mobile-only { display: none; }
+        
+        @media (max-width: 750px) {
+            .hide-mobile { display: none; }
+            .show-mobile-only { display: block; }
+            
+            #table-body-history td { padding: 12px 10px; }
+            #table-body-history tr:active { background-color: rgba(37, 99, 235, 0.1); }
+        }
     </style>
 </head>
 <body>
@@ -668,12 +677,11 @@
             <table style="margin-top: 10px;">
                 <thead>
                     <tr>
-                        <th>Date</th>
                         <th>Actif</th>
-                        <th>Qté</th>
-                        <th>P.U.</th>
-                        <th>Frais</th>
-                        <th>Total</th>
+                        <th class="hide-mobile" style="text-align:center;">Qté</th>
+                        <th class="hide-mobile" style="text-align:center;">P.U.</th>
+                        <th class="hide-mobile" style="text-align:center;">Frais</th>
+                        <th style="text-align:right;">Total</th>
                     </tr>
                 </thead>
                 <tbody id="table-body-history"></tbody>
@@ -746,14 +754,61 @@
         </div>
     </div>
 
+    <!-- NOUVELLE MODAL DETAILS TRANSACTION (VIEW) -->
+    <div class="modal" id="transactionDetailModal">
+        <div class="ticket-modal-content">
+            <div class="ticket-header" style="border-bottom:none; margin-bottom:10px;">
+                <h2 id="td-name">Actif</h2>
+                <span id="td-ticker" style="font-size: 0.8rem; background:var(--bg); padding:2px 6px; border-radius:4px; font-weight:600; color:var(--text-muted);">TICKER</span>
+                <div style="margin-top:8px; font-size:0.8rem; color:var(--text-muted);">Le <span id="td-date">--/--/----</span></div>
+            </div>
+
+            <!-- Indicateur de performance pour cette transaction -->
+            <div style="text-align:center; margin-bottom:20px;">
+                <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:2px;">Cours Actuel : <span id="td-cours">--</span></div>
+                <div id="td-perf" class="pos-perf-badge" style="display:inline-flex; font-size:0.9rem;">--%</div>
+            </div>
+            
+            <div style="border-top: 2px dashed var(--border); padding-top:15px;">
+                <div class="ticket-row">
+                    <span class="ticket-label">Quantité</span>
+                    <span class="ticket-label" style="color:var(--text);" id="td-qte">0</span>
+                </div>
+                <div class="ticket-row">
+                    <span class="ticket-label">Prix Unitaire</span>
+                    <span class="ticket-label" style="color:var(--text);" id="td-pu">0,00 €</span>
+                </div>
+                <div class="ticket-row">
+                    <span class="ticket-label">Total HT</span>
+                    <span class="ticket-label" style="color:var(--text);" id="td-total-ht">0,00 €</span>
+                </div>
+                <div class="ticket-row">
+                    <span class="ticket-label">Frais</span>
+                    <span class="ticket-label" style="color:var(--text);" id="td-frais">0,00 €</span>
+                </div>
+                
+                <div class="ticket-total-section">
+                    <div class="total-row">
+                        <span class="total-label">Total Net</span>
+                        <span id="td-total-net" class="total-amount">0,00 €</span>
+                    </div>
+                </div>
+            </div>
+
+            <button id="btn-delete-transaction" class="btn-ticket" style="background:#ef4444; margin-top:30px;">Supprimer</button>
+            <button id="closeDetailBtn" style="width:100%; background:none; border:none; color:var(--text-muted); margin-top:15px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; cursor: pointer;">Fermer</button>
+        </div>
+    </div>
+
     <!-- MODAL HISTORIQUE PRODUIT (Nouvelle fenêtre) -->
     <div class="modal" id="productHistoryModal">
         <div class="history-modal-content">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                <h2 style="font-size: 1.5rem; color: var(--text);">Historique</h2>
+                <h2 style="font-size: 1.5rem; color: var(--text);">Historique :</h2>
                 <button id="closeHistoryBtn" style="background:none; border:none; font-size:1.5rem; color:var(--text-muted); cursor:pointer;">&times;</button>
             </div>
             <div id="modal-history-title" style="margin:15px; font-size: 1.1rem; color: var(--text); text-align: center;"></div>
+            <div id="modal-history-cours" style="margin:15px; font-size: 0.8rem; color: var(--text); text-align: center;"></div>
             <table class="history-table">
                 <thead>
                     <tr>
