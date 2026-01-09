@@ -15,11 +15,29 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!API_URL) {
         showConfigModal();
     } else {
+        // 1. Tenter d'afficher les données en cache immédiatement
+        loadCachedData();
+        // 2. Lancer la synchronisation en arrière-plan
         fetchData();
     }
     setupEventListeners();
     setupTabs();
 });
+
+// --- LOADER HELPERS ---
+function showLoader(text = "Chargement...") {
+    const loader = document.getElementById('global-loader');
+    const textEl = document.getElementById('loader-text');
+    if (loader) {
+        if(textEl) textEl.innerText = text;
+        loader.style.display = 'flex';
+    }
+}
+
+function hideLoader() {
+    const loader = document.getElementById('global-loader');
+    if (loader) loader.style.display = 'none';
+}
 
 /**
  * Système d'onglets pour navigation fluide
@@ -65,31 +83,80 @@ async function fetchWithRetry(url, options = {}, retries = 3) {
     }
 }
 
+// --- NOUVELLE FONCTION : Charge les données locales ---
+function loadCachedData() {
+    const cached = localStorage.getItem('pea_data_cache');
+    if (cached) {
+        try {
+            console.log("Chargement des données en cache...");
+            const data = JSON.parse(cached);
+            document.getElementById('status').innerText = "Mémoire";
+            processData(data); // Affiche les données
+        } catch (e) {
+            console.error("Cache invalide", e);
+        }
+    }
+}
+
+// --- NOUVELLE FONCTION : Traite et Affiche les données (Factorisation) ---
+function processData(result) {
+    // Stocker les transactions globalement
+    globalTransactions = result.transactions || [];
+    
+    // Créer la map Ticker -> Nom à partir des données Live
+    tickerToNameMap = {};
+    if (result.live) {
+        result.live.forEach(item => {
+            const ticker = (item.ticker || "").toUpperCase().trim();
+            const name = item.liste_produits || item.ticker;
+            if (ticker) tickerToNameMap[ticker] = name;
+        });
+    }
+    globalLive = result.live;
+    
+    // Lancer le rendu visuel
+    renderDashboard(result.transactions || [], result.live || []);
+}
+
 async function fetchData() {
     const statusEl = document.getElementById('status');
     if (!API_URL) return;
-    
+
+    // On n'affiche le loader "full screen" que si on n'a pas de données en cache,
+    // sinon c'est une synchro silencieuse en arrière-plan.
+    const isSilent = document.getElementById('table-body-history').innerHTML !== "";
+    if (!isSilent) showLoader("Synchronisation...");
+
     try {
-        statusEl.innerText = "Sync...";
+        // Si on a déjà chargé le cache, on indique qu'on sync par dessus
+        if (statusEl.innerText !== "Mémoire") {
+            statusEl.innerText = "Sync...";
+        } else {
+            // Petit indicateur visuel optionnel ou laisser "Mémoire" temporairement
+            statusEl.innerText = "Sync...";
+        }
+
         const response = await fetchWithRetry(API_URL);
         const result = await response.json();
+        
+        // --- SAUVEGARDE EN LOCAL ---
+        localStorage.setItem('pea_data_cache', JSON.stringify(result));
+        
         statusEl.innerText = "À jour";
         
-        // Stocker les transactions globalement
-        globalTransactions = result.transactions || [];
-        // Créer la map Ticker -> Nom à partir des données Live
-        tickerToNameMap = {};
-        if (result.live) {
-            result.live.forEach(item => {
-                const ticker = (item.ticker || "").toUpperCase().trim();
-                const name = item.liste_produits || item.ticker;
-                if (ticker) tickerToNameMap[ticker] = name;
-            });
-        }
-        globalLive = result.live
-        renderDashboard(result.transactions || [], result.live || []);
+        // Mise à jour de l'affichage avec les données fraîches
+        processData(result);
+        
+        
     } catch (error) {
-        statusEl.innerText = "Erreur Sync";
+
+        // Si erreur, on garde les données en cache affichées si elles existent
+        if (globalTransactions.length > 0) {
+            statusEl.innerText = "Hors Ligne"; // Indique qu'on est sur le cache
+        } else {
+            statusEl.innerText = "Erreur Sync";
+        }
+        
         console.warn("Erreur de récupération des données : ", error.message);
     }
 }
@@ -240,6 +307,7 @@ async function deleteTransaction(transaction) {
     const originalText = btn.innerText;
     btn.innerText = "Suppression...";
     btn.disabled = true;
+    showLoader("Suppression en cours...");
 
     // On crée l'objet à envoyer pour suppression (type DELETE)
     const dataToDelete = {
@@ -264,6 +332,7 @@ async function deleteTransaction(transaction) {
     } finally {
         btn.innerText = originalText;
         btn.disabled = false;
+        hideLoader();
     }
 }
 
@@ -330,6 +399,7 @@ async function handleFormSubmit(e) {
     const originalText = btn.innerText;
     btn.innerText = "Traitement...";
     btn.disabled = true;
+    showLoader("Enregistrement...");
 
     const qte = parseFloat(document.getElementById('t_qte').value);
     const prix = parseFloat(document.getElementById('t_prix').value);
@@ -365,6 +435,7 @@ async function handleFormSubmit(e) {
     } finally {
         btn.innerText = originalText;
         btn.disabled = false;
+        hideLoader();
     }
 }
 
@@ -468,8 +539,9 @@ function renderDashboard(transactions, liveData) {
                             <div class="pos-name">${nom}</div>
                             <div class="pos-ticker">${item.ticker || '---'}</div>
                         </div>
-                        <div class="pos-perf-badge ${isPos ? 'perf-up' : 'perf-down'}">
-                            ${isPos ? '▲' : '▼'} ${Math.abs(perf).toFixed(2)}%
+                        <div class="pos-perfo-group ${isPos ? 'perf-up' : 'perf-down'}">
+                            <div class="pos-perf-badge">${isPos ? '▲' : '▼'} ${Math.abs(perf).toFixed(2)}%</div>
+                            <div class="pos-perf-cours">${isPos ? '+' : '-'}${formatEuro(Math.abs(valeurTotale-coutTotal))}</div>
                         </div>
                     </div>
                     

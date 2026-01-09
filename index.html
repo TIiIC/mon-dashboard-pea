@@ -222,15 +222,16 @@
             align-self: flex-start;
             font-weight: 600;
         }
-
+        .pos-perfo-group { display: flex; flex-direction: column; padding: 6px 12px; border-radius: 12px; align-items: center;}
         .pos-perf-badge {
             font-size: 0.85rem;
-            padding: 6px 12px;
-            border-radius: 12px;
             font-weight: 700;
-            display: flex;
-            align-items: center;
-            gap: 4px;
+            gap : 4px
+        }
+        .pos-perf-cours {
+            font-size: 0.70rem;
+            font-weight: 700;
+            gap : 4px;
         }
         .perf-up { background: var(--up-bg); color: var(--up); }
         .perf-down { background: var(--down-bg); color: var(--down); }
@@ -597,6 +598,42 @@
             box-shadow: 0 4px 10px rgba(37, 99, 235, 0.2);
         }
 
+        /* --- LOADER OVERLAY --- */
+        .loader-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.5); /* Fond clair transparent */
+            backdrop-filter: blur(8px); /* Effet de flou */
+            z-index: 9999; /* Au-dessus de tout */
+            display: none; /* Masqué par défaut */
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            .loader-overlay {
+                background: rgba(15, 23, 42, 0.6); /* Fond sombre transparent */
+            }
+        }
+
+        .loader-spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid var(--border);
+            border-top: 5px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
         /* Styles spécifiques pour le tableau d'historique produit */
         .history-table { width: 100%; border-collapse: collapse; }
         .history-table th { text-align: left; padding: 5px; border-bottom: 1px solid var(--border); font-size: 0.65rem; color: var(--text-muted); }
@@ -616,6 +653,13 @@
 </head>
 <body>
 
+    <!-- LOADER OVERLAY -->
+    <div id="global-loader" class="loader-overlay">
+        <div class="loader-spinner"></div>
+        <div id="loader-text" style="margin-top: 15px; font-weight: 700; color: var(--text); font-size: 0.9rem;">Chargement...</div>
+    </div>
+
+    
     <header>
         <div>
             <h1 style="margin:0; font-size: 1.25rem; font-weight: 800; color: var(--primary); letter-spacing: -0.03em;">DASHBOARD PEA</h1>
@@ -690,7 +734,7 @@
     </main>
 
     <button class="fab" id="openModalBtn"><span>+</span></button>
-
+   
     <!-- MODAL STYLE TICKET DE CAISSE -->
     <div class="modal" id="transactionModal">
         <div class="ticket-modal-content">
