@@ -158,6 +158,8 @@ async function fetchData() {
         }
         
         console.warn("Erreur de récupération des données : ", error.message);
+    } finally {
+        hideLoader();
     }
 }
 
