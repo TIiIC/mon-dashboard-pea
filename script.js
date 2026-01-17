@@ -7,6 +7,10 @@ let cumulativeChartInstance = null;
 let tickerToNameMap = {};
 // Stockage global des transactions pour filtrage
 let globalTransactions = [];
+// Stockage global des dividendes pour filtrage
+let globalDividendes = [];
+// Stockage global des plans pour filtrage
+let globalPlan = [];
 // Stockage global des Produit pour filtrage
 let globalLive = {};
 // Objectif mensuel pour le graphique
@@ -105,59 +109,142 @@ function loadCachedData() {
     }
 }
 
-// --- Fonction helper pour récupérer les dividendes d'un produit depuis result.live ---
-function getProductDividend(item, resultLive) {
-    if (!resultLive || !Array.isArray(resultLive)) return 0;
-    
-    // Cas 1: Chercher par id_perso (matching exact avec ticker de result.live)
-    let matching = resultLive.find(liveItem => 
-        (liveItem.ticker || "").toUpperCase().trim() === (item.id_perso || "").toUpperCase().trim()
-    );
-    if (matching) return cleanNumber(matching.dividende) || 0;
-    
-    // Cas 2: Chercher par tickers_utiliser
-    matching = resultLive.find(liveItem => 
-        (liveItem.ticker || "").toUpperCase().trim() === (item.tickers_utiliser || "").toUpperCase().trim()
-    );
-    if (matching) return cleanNumber(matching.dividende) || 0;
-    
-    // Cas 3: Chercher par nom
-    matching = resultLive.find(liveItem => 
-        liveItem.liste_produits === item.nom
-    );
-    if (matching) return cleanNumber(matching.dividende) || 0;
-    
-    // Cas 4: Aucun match
-    return 0;
+// --- HELPER DIVIDENDES ---
+
+// Convertit "2,05 €" en 2.05
+function parseDividende(divString) {
+    if (!divString) return 0;
+    // Enlever € et espaces, remplacer virgule par point
+    const cleaned = divString.toString()
+        .replace(/[€\s]/g, '') // Regex pour enlever symbole euro et tout espace
+        .replace(',', '.')
+        .trim();
+    return parseFloat(cleaned) || 0;
 }
 
-function getProductTransactions(item, transactions) { // Récupère les transactions associées à un produit donné
+// Calcule la quantité d'actions possédées à une date précise
+function getQuantityAtDate(productTransactions, dateLimitStr) {
+    const limit = new Date(dateLimitStr);
+    return productTransactions.reduce((sum, t) => {
+        const tDate = new Date(t.date);
+        // Si la transaction a eu lieu AVANT ou LE JOUR MÊME du versement
+        if (tDate <= limit) {
+             return sum + cleanNumber(t.quantite);
+        }
+        return sum;
+    }, 0);
+}
+
+// Récupère les dividendes totaux perçus pour un produit
+// Logique : Somme (Montant Unitaire * Quantité possédée à la date du versement)
+function getProductDividend(item, dividendes, transactions) {
+    if (!dividendes || !Array.isArray(dividendes)) return 0;
+    
+    const ticker = (item.id_perso || item.tickers_utiliser || "").toUpperCase().trim();
+    const nom = item.nom; // Le nom dans dataLive
+
+    // 1. Récupérer toutes les transactions pour ce produit (pour calculer l'historique des quantités)
+    const productTransactions = getProductTransactions(item, transactions);
+    
+    // 2. Filtrer les lignes de dividendes qui concernent ce produit
+    const productDividendes = dividendes.filter(div => {
+        const divCode = (div.code || "").toUpperCase().trim();
+        const divNom = div.nom || "";
+        
+        // Match par code ticker OU par nom
+        // On vérifie que divCode ou divNom ne sont pas vides pour éviter les faux positifs
+        return (divCode && divCode === ticker) || (divNom && divNom === nom);
+    });
+    
+    // 3. Calculer le total réel perçu
+    const total = productDividendes.reduce((sum, div) => {
+        // On ne traite que les dividendes marqués comme "Reçus" ou si le statut est vide (par défaut)
+        // A adapter selon ta rigueur dans le fichier Sheets. Ici on prend tout.
+        
+        const montantUnitaire = parseDividende(div["div/u"]);
+        const dateVersement = div.date; // Format ISO attendu "2025-06-03T00:00:00.000Z"
+
+        if (montantUnitaire > 0 && dateVersement) {
+            // Combien d'actions avais-je à cette date ?
+            const quantity = getQuantityAtDate(productTransactions, dateVersement);
+            return sum + (montantUnitaire * quantity);
+        }
+        return sum;
+    }, 0);
+    
+    return total;
+}
+
+// --- HELPERS D'IDENTIFICATION & PERFORMANCE (FALLBACK) ---
+
+// Trouve un produit dans globalLive par ID ou Nom (Fallback robuste)
+function findLiveItem(identifier) {
+    if (!identifier) return null;
+    const search = identifier.toUpperCase().trim();
+    
+    // 1. Chercher par ID Perso ou Ticker exact
+    let match = globalLive.find(item => 
+        (item.ticker && item.ticker.toUpperCase().trim() === search) ||
+        (item.ticker_backup && item.ticker_backup.toUpperCase().trim() === search)
+    );
+    if (match) return match;
+
+    // 2. Chercher par Nom (Liste Produits)
+    match = globalLive.find(item => 
+        item.liste_produits && item.liste_produits.toUpperCase().trim() === search
+    );
+    return match || null;
+}
+
+// Centralisation du calcul de performance d'une transaction
+function calculateTransactionPerformance(transaction, coursActuel) {
+    const prix = cleanNumber(transaction.prix_unitaire || transaction.prix);
+    const frais = cleanNumber(transaction.frais);
+    const quantite = cleanNumber(transaction.quantite);
+    
+    // PRU = Prix d'achat + (Frais / Quantité)
+    const coutRevient = prix + (quantite > 0 ? frais / quantite : 0);
+    
+    // Perf = (Cours - PRU) / PRU
+    let perf = 0;
+    if (coutRevient > 0 && coursActuel > 0) {
+        perf = ((coursActuel - coutRevient) / coutRevient) * 100;
+    }
+    
+    return {
+        prix,
+        frais,
+        quantite,
+        coutRevient,
+        perf,
+        isPos: perf >= 0,
+        totalInvesti: transaction.total || ((quantite * prix) + frais)
+    };
+}
+// Récupère les transactions associées à un produit donné avec fallback
+function getProductTransactions(item, transactions) {
     if (!transactions || !Array.isArray(transactions)) return [];
     
-    // Cas 1: Chercher par id_perso
-    let matching = transactions.filter(t => 
-        (t.ticker || "").toUpperCase().trim() === (item.id_perso || "").toUpperCase().trim()
-    );
-    if (matching.length > 0) return matching;
-    
-    // Cas 2: Chercher par tickers_utiliser
-    matching = transactions.filter(t => 
-        (t.ticker || "").toUpperCase().trim() === (item.tickers_utiliser || "").toUpperCase().trim() 
-    );
-    if (matching.length > 0) return matching;
-    
-    // Cas 3: Chercher par nom
-    matching = transactions.filter(t => 
-        t.nom === item.nom
-    );
-    if (matching.length > 0) return matching;
-    
-    // Cas 4: Aucun match
-    return [];
+    // Récupération plus robuste
+    const idPerso = (item.id_perso || "").toUpperCase().trim();
+    const tickerUtil = (item.tickers_utiliser || "").toUpperCase().trim();
+    const nom = (item.nom || "").toUpperCase().trim();
+
+    return transactions.filter(t => {
+        const tTicker = (t.ticker || "").toUpperCase().trim();
+        const tNom = (t.nom || "").toUpperCase().trim();
+        
+        // Match Ticker vs ID ou Ticker vs TickerUtil
+        if (tTicker && (tTicker === idPerso || tTicker === tickerUtil)) return true;
+        // Match Nom vs Nom
+        if (tNom && tNom === nom) return true;
+        
+        return false;
+    });
 }
 
-// --- Fonction pour reconstruire l'objet 'live' à partir de dataLive, transactions et result.live ---
-function reconstructLive(dataLive, transactions, resultLive) {
+// --- Fonction pour reconstruire l'objet 'live' à partir de dataLive, transactions et dividende ---
+function reconstructLive(dataLive, transactions, dividendes) {
     if (!dataLive || !Array.isArray(dataLive)) return [];
     
     return dataLive.map(item => {
@@ -182,7 +269,7 @@ function reconstructLive(dataLive, transactions, resultLive) {
         // Données de base
         const valeurUnitaire = cleanNumber(item.cour);
         const somme = unite * valeurUnitaire;
-        const dividende = getProductDividend(item, resultLive);
+        const dividende = getProductDividend(item, dividendes, transactions);
         
         // Calculer perfo: (valeur_unitaire - achat_moyen + (dividende/unité)) / achat_moyen
         let perfo = 0;
@@ -210,16 +297,19 @@ function reconstructLive(dataLive, transactions, resultLive) {
 
 // --- Traite et Affiche les données (Factorisation) ---
 function processData(result) {
-    // Stocker les transactions globalement
+    // Stocker les données globales
     globalTransactions = result.transactions || [];
+    globalDividendes = result.dividende || [];
+    globalPlan = result.plan || []; 
+    globalLive = reconstructLive(result.dataLive, globalTransactions, globalDividendes);
     
-    // Créer la map Ticker -> Nom à partir des données Live
-    reconstructLive(result.dataLive, result.transactions, result.live).forEach(item => {
+    // Créer la map Ticker -> Nom à partir des données Live calculées
+    globalLive.forEach(item => {
         const ticker = (item.ticker || item.ticker_backup || "").toUpperCase().trim();
         const name = item.liste_produits || item.ticker;
         if (ticker) tickerToNameMap[ticker] = name;
     });
-    globalLive = reconstructLive(result.dataLive, result.transactions, result.live);
+
     console.log('reconstructLive result:', globalLive);
     
     // Vérifier les données historiques (dataLive vs historiqueProduit)
@@ -232,7 +322,7 @@ function processData(result) {
     }
     
     // Lancer le rendu visuel
-    renderDashboard(result.transactions || [], reconstructLive(result.dataLive, result.transactions, result.live) || []);
+    renderDashboard(globalTransactions, globalLive);
 }
 
 // Variables globales pour stocker les données de vérification
@@ -322,7 +412,7 @@ async function fetchData() {
     try {
         // Si on a déjà chargé le cache, on indique qu'on sync par dessus
         if (statusEl.innerText !== "Mémoire") {
-            statusEl.innerText = "Sync...";
+            statusEl.innerText = "MAJ Sync...";
         } else {
             // Petit indicateur visuel optionnel ou laisser "Mémoire" temporairement
             statusEl.innerText = "Sync...";
@@ -385,63 +475,73 @@ function resetTicketDisplay() {
     if(els.total) els.total.textContent = "0,00 €";
 }
 
-window.showProductHistory = function(code, ticker) {
+// Affiche l'historique complet d'un produit dans une modale
+window.showProductHistory = function(identifier) {
     const modal = document.getElementById('productHistoryModal');
     const tbody = document.getElementById('modal-history-body');
     const title = document.getElementById('modal-history-title');
+    const coursEl = document.getElementById('modal-history-cours');
     
     if (!modal || !tbody) {
         console.error("Modal historique introuvable dans le DOM");
         return;
     }
 
-    // Filtrer les transactions pour ce ticker
-    const targetTicker = (code || "").toUpperCase().trim();
-    const productTransactions = globalTransactions.filter(t => 
-        (t.ticker || "").toUpperCase().trim() === targetTicker
-    );
+    // 1. Trouver les infos Live pour obtenir le cours actuel (Fallback)
+    const liveItem = findLiveItem(identifier);
+    const coursActuel = liveItem ? cleanNumber(liveItem.valeur_unitaire) : 0;
+    const productName = liveItem ? liveItem.liste_produits : (identifier || "Produit Inconnu");
+
+    // 2. Filtrer les transactions (Fallback: Ticker OR Nom)
+    const search = (identifier || "").toUpperCase().trim();
+    const productTransactions = globalTransactions.filter(t => {
+        const tTicker = (t.ticker || "").toUpperCase().trim();
+        const tNom = (t.nom || "").toUpperCase().trim();
+        
+        // Si on a un liveItem, on compare avec ses propriétés
+        if (liveItem) {
+            const liveTicker = (liveItem.ticker || "").toUpperCase().trim();
+            const liveName = (liveItem.liste_produits || "").toUpperCase().trim();
+            // Match transaction Ticker vs Live Ticker OU transaction Nom vs Live Nom
+            if (tTicker && tTicker === liveTicker) return true;
+            if (tNom && tNom === liveName) return true;
+            return false;
+        } 
+        
+        // Sinon fallback brute force sur l'identifiant passé
+        return tTicker === search || tNom === search;
+    });
     
-    // Trier par date décroissante (plus récent en haut)
+    // Trier par date décroissante
     productTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
     
-    // Mettre à jour le titre
-    const productName = tickerToNameMap[code] || targetTicker || "Produit Inconnu";
-    if(title) title.textContent = `${productName}`;
+    // Mise à jour UI
+    if(title) title.textContent = productName;
+    if(coursEl) coursEl.innerText = "Cours actuel : " + formatEuro(coursActuel);
 
     // Remplir le tableau
     tbody.innerHTML = "";
     if (productTransactions.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:var(--text-muted); padding:20px;">Aucune transaction trouvée.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding:20px;">Aucune transaction trouvée.</td></tr>`;
     } else {
-        const coursArr = globalLive.flatMap(m => {
-            const mTicker = ( m.ticker || "").toUpperCase();
-            return mTicker === targetTicker ? [m.valeur_unitaire] : [];
-        });
-        const cours = coursArr.length > 0 ? parseFloat(coursArr[0]) : 0;
-
-        if(document.getElementById('modal-history-cours')) {
-            document.getElementById('modal-history-cours').innerText = "Cours actuel : " + formatEuro(cours);
-        }
-        
         productTransactions.forEach(t => {
-            const prix = t.prix_unitaire;
-            const coutRevient = prix + (t.frais / t.quantite);
-            const perf = (coutRevient > 0 && cours > 0) ? ((cours - coutRevient) / coutRevient) * 100 : 0;
-            const isPos = perf >= 0;
+            // Utilisation du Helper de calcul
+            const { prix, frais, quantite, perf, isPos, totalInvesti } = calculateTransactionPerformance(t, coursActuel);
             const d = t.date ? new Date(t.date).toLocaleDateString('fr-FR') : "-";
             
             tbody.innerHTML += `
             <tr class="transaction-row">
-                    <td style = "text-align:center;">${d}</td>
-                    <td style = "text-align:center;">${t.quantite}</td>
-                    <td style = "text-align:center;">${formatEuro(prix)}</td>
-                    <td style="font-size: 0.8rem; color: var(--text-muted);text-align:center;">${t.frais > 0 ? formatEuro(t.frais) : '-'}</td>
-                    <td style="text-align:center;">
-                        <div style="font-weight: 1000; color: var(--text);">${formatEuro(t.total)}</div>
-                        <div class="${isPos?'trend-up':'trend-down'}"style="font-weight:bold; font-size: 0.8rem;">${isPos ? '▲' : '▼'} ${Math.abs(perf).toFixed(2)}%</div>
-                    </td>
-                    
-                </tr>
+                <td style="text-align:center;">${d}</td>
+                <td style="text-align:center;">${quantite}</td>
+                <td style="text-align:center;">${formatEuro(prix)}</td>
+                <td style="font-size: 0.8rem; color: var(--text-muted); text-align:center;">${frais > 0 ? formatEuro(frais) : '-'}</td>
+                <td style="text-align:center;">
+                    <div style="font-weight: 800; color: var(--text);">${formatEuro(totalInvesti)}</div>
+                    <div class="${isPos?'trend-up':'trend-down'}" style="font-weight:bold; font-size: 0.8rem;">
+                        ${isPos ? '▲' : '▼'} ${Math.abs(perf).toFixed(2)}%
+                    </div>
+                </td>
+            </tr>
             `;
         });
     }
@@ -449,7 +549,7 @@ window.showProductHistory = function(code, ticker) {
     modal.style.display = 'flex';
 };
 
-// Fonction appelée au clic sur une ligne de transaction (Mobile & Desktop)
+// Affiche les détails dans une modale
 window.openTransactionDetail = function(index) {
     const t = displayedTransactions[index];
     if (!t) return;
@@ -457,38 +557,34 @@ window.openTransactionDetail = function(index) {
     const modal = document.getElementById('transactionDetailModal');
     if(!modal) return;
 
-    // Récupération des infos
-    const ticker = (t.ticker || "").toUpperCase().trim();
-    const name = tickerToNameMap[ticker] || ticker;
-    const coursArr = globalLive.flatMap(m => {
-        const mTicker = (m.ticker || "").toUpperCase();
-        return mTicker === ticker ? [m.valeur_unitaire] : [];
-    });
-    const cours = coursArr.length > 0 ? parseFloat(coursArr[0]) : 0;
-    
-    // Calculs
-    const prix = t.prix_unitaire
-    const totalHT = t.quantite * prix;
-    const coutRevient = prix + (t.frais / t.quantite);
-    const perf = (coutRevient > 0 && cours > 0) ? ((cours - coutRevient) / coutRevient) * 100 : 0;
-    const isPos = perf >= 0;
+    // 1. Identifier le produit (Fallback)
+    // On essaie avec le ticker, sinon le nom
+    const identifier = t.ticker || t.nom;
+    const liveItem = findLiveItem(identifier);
+    const coursActuel = liveItem ? cleanNumber(liveItem.valeur_unitaire) : 0;
+    const name = liveItem ? liveItem.liste_produits : (t.nom || "Inconnu");
+    const tickerDisplay = liveItem ? (liveItem.ticker || t.ticker) : t.ticker;
+
+    // 2. Calculs via Helper centralisé
+    const { prix, frais, quantite, perf, isPos, totalInvesti } = calculateTransactionPerformance(t, coursActuel);
+    const totalHT = quantite * prix;
 
     // Remplissage Header
     document.getElementById('td-date').innerText = new Date(t.date).toLocaleDateString('fr-FR');
     document.getElementById('td-name').innerText = name;
-    document.getElementById('td-ticker').innerText = ticker;
-    document.getElementById('td-cours').innerText = formatEuro(cours);
+    document.getElementById('td-ticker').innerText = tickerDisplay || "---";
+    document.getElementById('td-cours').innerText = formatEuro(coursActuel);
     
     const perfEl = document.getElementById('td-perf');
     perfEl.innerHTML = `${isPos ? '▲' : '▼'} ${Math.abs(perf).toFixed(2)}%`;
     perfEl.className = `pos-perf-badge ${isPos ? 'perf-up' : 'perf-down'}`;
 
     // Remplissage Ticket
-    document.getElementById('td-qte').innerText = t.quantite;
+    document.getElementById('td-qte').innerText = quantite;
     document.getElementById('td-pu').innerText = formatEuro(prix);
-    document.getElementById('td-frais').innerText = formatEuro(t.frais);
+    document.getElementById('td-frais').innerText = formatEuro(frais);
     document.getElementById('td-total-ht').innerText = formatEuro(totalHT);
-    document.getElementById('td-total-net').innerText = formatEuro(t.total);
+    document.getElementById('td-total-net').innerText = formatEuro(totalInvesti);
 
     // Setup Bouton Supprimer
     const btnDel = document.getElementById('btn-delete-transaction');
@@ -752,20 +848,17 @@ function renderDashboard(transactions, liveData) {
         displayedTransactions = [...transactions].sort((a, b) => new Date(b.date) - new Date(a.date));
         
         displayedTransactions.forEach((t, index)=> {
+            // Utilisation du Helper Fallback pour trouver les infos Live
+            const identifier = t.ticker || t.nom;
+            const liveItem = findLiveItem(identifier);
+            
             const d = t.date ? new Date(t.date).toLocaleDateString('fr-FR') : "-";
-            const tickerKey = (t.ticker || "").toUpperCase().trim();
-            const displayName = t.nom || "Autre";
-            const frais = t.frais;
-            const coursArr = liveData.flatMap(m => {
-                const mTicker = (m.ticker || "").toUpperCase();
-                return mTicker === tickerKey ? [m.valeur_unitaire] : [];
-            });
-            const cours = coursArr.length > 0 ? parseFloat(coursArr[0]) : 0;
-            const prix = t.prix_unitaire;
-
-            const coutRevient = prix + (frais/t.quantite);
-            const perf = (coutRevient > 0 && cours > 0) ? ((cours - coutRevient) / coutRevient) * 100 : 0;
-            const isPos = perf >= 0;
+            const displayName = t.nom || (liveItem ? liveItem.liste_produits : "Autre");
+            const tickerKey = t.ticker || (liveItem ? liveItem.ticker : "");
+            
+            // Calculs via Helper centralisé
+            const coursActuel = liveItem ? cleanNumber(liveItem.valeur_unitaire) : 0;
+            const { prix, frais, quantite, perf, isPos, totalInvesti } = calculateTransactionPerformance(t, coursActuel);
             
             historyBody.innerHTML += `
                 <tr class="transaction-row" onclick="openTransactionDetail(${index})">
@@ -774,11 +867,11 @@ function renderDashboard(transactions, liveData) {
                         <div style="font-weight: 600; color: var(--text);">${displayName}</div>
                         <div style="font-size: 0.7rem; color: var(--text-muted); font-family: monospace;">${tickerKey}</div>
                     </td>
-                    <td class="hide-mobile" style="text-align:center;">${t.quantite}</td>
+                    <td class="hide-mobile" style="text-align:center;">${quantite}</td>
                     <td class="hide-mobile" style="text-align:center;">${formatEuro(prix)}</td>
                     <td class="hide-mobile" style="font-size: 0.8rem; color: var(--text-muted); text-align:center;">${frais > 0 ? formatEuro(frais) : '-'}</td>
                     <td style="text-align:right;">
-                        <div style="font-weight: 800; color: var(--text);">${formatEuro(t.total)}</div>
+                        <div style="font-weight: 800; color: var(--text);">${formatEuro(totalInvesti)}</div>
                         <div class="${isPos?'trend-up':'trend-down'}" style="font-weight:bold; font-size: 0.75rem;">
                             ${isPos ? '▲' : '▼'} ${perf.toFixed(2)}%
                         </div>
@@ -834,8 +927,11 @@ function renderDashboard(transactions, liveData) {
             const diffCours = cours - am;
             const isDiffPos = diffCours >= 0;
             
+            // Fallback : On passe le ticker s'il existe, sinon le nom
+            const identifierForHistory = item.ticker || item.liste_produits;
+
             gridContainer.innerHTML += `
-                <div class="position-card" onclick="showProductHistory('${item.ticker}')">
+                <div class="position-card" onclick="showProductHistory('${identifierForHistory}')">
                     <!-- HEADER -->
                     <div class="pos-header" style="margin-bottom: 12px;">
                         <div class="pos-title-group">
@@ -1136,7 +1232,7 @@ function updateCumulativeChart(transactions) {
     
     if (cumulativeChartInstance) cumulativeChartInstance.destroy();
     
-    // Trier les transactions par date
+    // 1. Trier les transactions par date (Opération unique)
     const sortedTransactions = [...transactions].sort((a, b) => new Date(a.date) - new Date(b.date));
     
     // Calculer la plage de dates en fonction de la période sélectionnée
@@ -1175,50 +1271,44 @@ function updateCumulativeChart(transactions) {
         return tDate >= startDate;
     });
     
-    // Si pas de transactions dans la plage, afficher un message
-    if (filteredTransactions.length === 0) {
-        cumulativeChartInstance = new Chart(cCtx.getContext('2d'), {
-            type: 'line',
-            data: { labels: [], datasets: [] },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false } }
-            }
-        });
-        return;
-    }
-    
     // Accumuler les investissements à partir du début de la période
     const initialTotal = sortedTransactions
         .filter(t => new Date(t.date) < startDate)
         .reduce((sum, t) => sum + cleanNumber(t.total), 0);
     
-    const cumulativeData = [];
+    // 2. Groupement Linéaire (Optimisation Point 8)
+    const uniqueDates = [];
+    const uniqueValues = [];
     let runningTotal = initialTotal;
+    
+    // Ajout d'un point de départ pour l'esthétique (Optionnel mais recommandé)
+    if (filteredTransactions.length > 0 && initialTotal > 0) {
+        // Optionnel : on pourrait ajouter le point de départ ici
+        // uniqueDates.push(startDate.toLocaleDateString('fr-FR'));
+        // uniqueValues.push(initialTotal);
+    }
     
     filteredTransactions.forEach(t => {
         runningTotal += cleanNumber(t.total);
-        cumulativeData.push({
-            date: new Date(t.date),
-            value: runningTotal,
-            label: new Date(t.date).toLocaleDateString('fr-FR')
-        });
-    });
-    
-    // Grouper par date
-    const dateMap = {};
-    cumulativeData.forEach(item => {
-        const dateStr = item.label;
-        if (!dateMap[dateStr] || item.value > dateMap[dateStr].value) {
-            dateMap[dateStr] = item;
+        const dateStr = new Date(t.date).toLocaleDateString('fr-FR'); // Format DD/MM/YYYY
+        
+        // Logique : Si on est sur le même jour que la dernière entrée, on met à jour la valeur
+        // Sinon on crée une nouvelle entrée
+        if (uniqueDates.length > 0 && uniqueDates[uniqueDates.length - 1] === dateStr) {
+             uniqueValues[uniqueValues.length - 1] = runningTotal;
+        } else {
+             uniqueDates.push(dateStr);
+             uniqueValues.push(runningTotal);
         }
     });
+
+    // Création d'un dégradé pour le remplissage (Bonus UI)
+    const ctx = cCtx.getContext('2d');
+    const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+    gradient.addColorStop(0, 'rgba(59, 130, 246, 0.4)'); // Bleu plus opaque en haut
+    gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)'); // Transparent en bas
     
-    let uniqueDates = Object.keys(dateMap).sort((a, b) => new Date(dateMap[a].date) - new Date(dateMap[b].date)); // Trier les dates
-    let uniqueValues = uniqueDates.map(date => dateMap[date].value); // Obtenir les valeurs correspondantes
-    
-    cumulativeChartInstance = new Chart(cCtx.getContext('2d'), {
+    cumulativeChartInstance = new Chart(ctx, {
         type: 'line',
         data: {
             labels: uniqueDates,
@@ -1226,7 +1316,7 @@ function updateCumulativeChart(transactions) {
                 label: 'Capital Investi Cumulé',
                 data: uniqueValues,
                 borderColor: '#3b82f6',
-                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                backgroundColor: gradient, // Utilisation du dégradé
                 borderWidth: 3,
                 fill: true,
                 tension: 0.4,
@@ -1244,18 +1334,13 @@ function updateCumulativeChart(transactions) {
             plugins: {
                 legend: {
                     display: true,
-                    labels: {
-                        padding: 15,
-                        font: { size: 11 },
-                        boxWidth: 10
-                    }
+                    labels: { padding: 15, font: { size: 11 }, boxWidth: 10 }
                 },
                 tooltip: {
                     callbacks: {
                         label: function(context) {
                             return 'Total: ' + new Intl.NumberFormat('fr-FR', { 
-                                style: 'currency', 
-                                currency: 'EUR' 
+                                style: 'currency', currency: 'EUR' 
                             }).format(context.parsed.y);
                         },
                         afterLabel: function(context) {
@@ -1264,13 +1349,11 @@ function updateCumulativeChart(transactions) {
                                 const current = context.parsed.y;
                                 const diff = current - previous;
                                 return 'Versé: ' + new Intl.NumberFormat('fr-FR', { 
-                                    style: 'currency', 
-                                    currency: 'EUR' 
+                                    style: 'currency', currency: 'EUR' 
                                 }).format(diff);
                             }
                             return 'Solde initial: ' + new Intl.NumberFormat('fr-FR', { 
-                                style: 'currency', 
-                                currency: 'EUR' 
+                                style: 'currency', currency: 'EUR' 
                             }).format(initialTotal);
                         }
                     }
@@ -1279,15 +1362,12 @@ function updateCumulativeChart(transactions) {
             scales: {
                 y: {
                     beginAtZero: initialTotal === 0,
-                    min: initialTotal > 0 ? initialTotal * 0.8 : undefined,
+                    min: initialTotal > 0 ? initialTotal * 0.9 : undefined, // Zoom automatique léger
                     grid: { display: true, color: 'rgba(0, 0, 0, 0.05)' },
                     ticks: {
-                        callback: 
-                        function(value) {
+                        callback: function(value) {
                             return new Intl.NumberFormat('fr-FR', { 
-                                style: 'currency', 
-                                currency: 'EUR',
-                                maximumFractionDigits: 0
+                                style: 'currency', currency: 'EUR', maximumFractionDigits: 0
                             }).format(value);
                         }
                     }
@@ -1297,38 +1377,27 @@ function updateCumulativeChart(transactions) {
                     ticks: {
                         maxRotation: 0,
                         autoSkip: true,
-                        // Ajuster la densité selon la période
-                        maxTicksLimit: (activePeriod === '1m') ? 6 : 12,
+                        maxTicksLimit: (activePeriod === '1m') ? 6 : 10,
                         callback: function(value, index, values) {
-                            // value est l'index dans le tableau labels pour un axe type 'category' (défaut line chart)
-                            // On récupère le label brut (format YYYY-MM-DD que nous avons généré)
                             const label = this.getLabelForValue(value);
-                            
-                            // Conversion sécurisée en Date (Supporte ISO YYYY-MM-DD et FR DD/MM/YYYY)
+                            // Conversion du label string (DD/MM/YYYY) en Date pour formatage intelligent
                             let date;
                             if (label.includes('/')) {
                                 const parts = label.split('/');
-                                // Reformatage en YYYY-MM-DD pour le constructeur Date
                                 date = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
                             } else {
                                 date = new Date(label);
                             }
-
-                            if (isNaN(date.getTime())) return label; // Sécurité si date invalide
+                            if (isNaN(date.getTime())) return label;
                             
+                            // Formatage intelligent selon l'année
                             const now = new Date();
-                            const isMoreThanAYear = date.getMonth() + 12 * date.getFullYear() - (now.getMonth() + 12 * now.getFullYear()) > 12;
+                            const isCurrentYear = date.getFullYear() === now.getFullYear();
 
-                            // Logique "Agile"
                             if (activePeriod === '5y') {
-                                // Période très longue : Mois + Année (ex: janv. 24)
-                                // Optionnel : Si c'est Janvier, afficher l'année en gras ? ChartJS ne gère pas le gras par tick facilement, on reste simple.
                                 return date.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' });
-                            } 
-                            else {
-                                // Période Standard (6m, 1y, YTD)
-                                // Règle demandée : Année courante -> 19 janv. | Année passée -> janv. 26
-                                if (isMoreThanAYear) {
+                            } else {
+                                if (isCurrentYear) {
                                     return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
                                 } else {
                                     return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: '2-digit' });
@@ -1336,13 +1405,6 @@ function updateCumulativeChart(transactions) {
                             }
                         }
                     }
-                    /*ticks: {
-                        callback: 
-                        function(value, index) {
-                            var date =  displayLabels.includes(uniqueDates[index].getFullYear() === new Date().getFullYear()) ? uniqueDates[index].format('fr-FR', { day : 'numeric', month: 'short' }) : uniqueDates[index];
-                            return displayLabels.includes(uniqueDates[index]) ? date : '';
-                        }
-                    }*/
                 }
             }
         }
