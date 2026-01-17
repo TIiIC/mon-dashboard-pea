@@ -671,7 +671,3 @@ modalManager.open('transactionModal');
 | Optimisations 5-8 | ⭐⭐⭐ | ⭐⭐⭐⭐ | 🟢 Facile | 🟡 Moyenne |
 | Features 9-12 | ⭐⭐⭐⭐⭐ | ⭐⭐ | 🟡 Moyenne | 🟢 Nice-to-have |
 | Refactoring 13-14 | ⭐⭐ | ⭐⭐⭐⭐ | 🔴 Difficile | 🟢 Optionnel |
-
----
-
-Veux-tu que je t'aide à implémenter l'une de ces améliorations en particulier ? 🚀
