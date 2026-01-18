@@ -387,29 +387,34 @@ Synchronise une feuille produit individuelle
 - **Progressive Enhancement** : Fonctionne offline avec cache
 
 ### Navigation
-Système d'onglets avec 2 vues principales :
-1. **Résumé** : Dashboard avec KPIs et graphiques
-2. **Historique de transaction** : Liste détaillée des opérations
+Système d'onglets avec 3 vues principales :
+1. **Résumé** : Dashboard avec KPIs et répartition portefeuille
+2. **Analyse** : Graphiques d'investissement (versements mensuels, évolution cumulative)
+3. **Historique** : Liste détaillée des opérations
 
 ### Composants principaux
 
-#### 1. Cartes KPI (Dashboard)
+#### 1. Cartes KPI (Dashboard - Onglet Résumé)
 - **Valeur Actuelle** : Valorisation totale du portefeuille
 - **Gain/Perte Totale** : Performance globale (capital investi + dividendes)
 
 #### 2. Graphiques (Chart.js)
+
+**Onglet Résumé** :
 - **Répartition Portefeuille** : Pie chart de l'allocation par actif
+
+**Onglet Analyse** :
 - **Historique Versements** : Bar chart empilé avec objectif mensuel
 - **Évolution Cumulative** : Line chart des investissements dans le temps (1m, 6m, 1y, YTD, 5y, MAX, personnalisé)
 
-#### 3. Cartes de Position
+#### 3. Cartes de Position (Onglet Résumé)
 Affichage sous forme de cartes (card layout) pour chaque actif :
 - Nom du produit + Ticker
 - Badge de performance (% et €)
 - Détails : Valeur, Dividendes, Total
 - Footer : Unités, Prix moyen, Cours actuel
 
-#### 4. Journal des transactions
+#### 4. Journal des transactions (Onglet Historique)
 Table responsive avec :
 - Desktop : Date, Actif, Qté, PU, Frais, Total
 - Mobile : Transformation en cartes interactives
@@ -581,8 +586,12 @@ Si anomalies détectées → Proposition de synchronisation automatique après 1
 - [x] Mode hors ligne (cache)
 - [x] Thème clair/sombre automatique
 - [x] Design responsive mobile-first
-- [x] Gestion dividendes
+- [x] Gestion dividendes (calcul automatique depuis feuille Dividende)
 - [x] Système de retry automatique (3 tentatives)
+- [x] Fonction `calculateTransactionPerformance()` centralisée
+- [x] Optimisation graphique cumulatif (pas de dateMap)
+- [x] Variables globales `globalDividendes` et `globalPlan` pour cache offline
+- [x] Navigation par onglets (3 onglets : Résumé, Analyse, Historique)
 
 ### 🔮 Évolutions futures prévues
 - [ ] Graphiques d'analyse avancés
@@ -591,6 +600,10 @@ Si anomalies détectées → Proposition de synchronisation automatique après 1
 - [ ] Alertes de prix
 - [ ] Comparaison avec indices de référence
 - [ ] Gestion des ventes (actuellement achat uniquement)
+- [ ] Suivi des plans d'investissement (comparaison prévisionnel/réel)
+- [ ] Graphique distribution des dividendes
+- [ ] Score de diversification du portefeuille
+- [ ] Système d'alertes intelligent
 
 ---
 
@@ -772,6 +785,7 @@ function doPost(e) {
 ✅ Backend Google Apps Script (API REST sur Google Sheets)  
 ✅ Cache LocalStorage pour mode offline  
 ✅ Mobile-first responsive design  
+✅ Navigation 3 onglets (Résumé, Analyse, Historique)
 
 ### Flux de données
 ✅ Source de vérité : Google Sheets (6 feuilles + feuilles produits)  
@@ -783,8 +797,10 @@ function doPost(e) {
 ✅ Mode no-cors obligatoire → pas de lecture réponse POST  
 ✅ Chargement optimiste (cache immédiat + sync background)  
 ✅ Matching multi-critères (id_perso, tickers_utiliser, nom)  
-✅ Gestion robuste des types (cleanNumber, formatEuro)  
+✅ Gestion robuste des types (cleanNumber, formatEuro, parseDividende, parseMontant)  
 ✅ Chart.js : toujours destroy avant recréation  
+✅ Fonction centralisée calculateTransactionPerformance()  
+✅ Optimisation graphique cumulatif (suppression dateMap)
 
 ### Bonnes pratiques
 ✅ Tout passe par processData() pour cohérence globale  
@@ -792,12 +808,15 @@ function doPost(e) {
 ✅ Variables globales documentées et centralisées  
 ✅ Event listeners dans setupEventListeners()  
 ✅ Responsive testé (hide-mobile, grilles adaptatives)  
+✅ Aucune duplication de code pour calculs de performance
 
 ### Maintenance
 ✅ Code commenté et structuré en sections  
 ✅ Debug tools (localStorage, console, badge statut)  
 ✅ Conventions de nommage cohérentes  
-✅ Architecture extensible pour évolutions futures
+✅ Architecture extensible pour évolutions futures  
+✅ Bugs critiques corrigés (reconstructLive, getProductDividend, globalLive)  
+✅ Variables globales complètes (globalDividendes, globalPlan)
 
 ---
 
