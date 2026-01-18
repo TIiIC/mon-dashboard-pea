@@ -1,4 +1,5 @@
 # ✅ Corrections et Améliorations Appliquées
+# 🚀 Propositions d'amélioration - Dashboard PEA
 
 ## 🔴 Phase 1 - Bugs Critiques (TERMINÉ)
 
@@ -400,3 +401,125 @@ html<!-- Nouvelle section dans le dashboard -->
 - [ ] Valider mode offline (effacer cache, vérifier données)
 - [ ] Tester graphiques sur différentes périodes
 - [ ] Valider responsive mobile sur nouvel onglet Analyse
+## 🔧 REFACTORING - Structure du code
+
+### 13. 📦 Modulariser le code JavaScript
+
+**Problème** :
+`script.js` fait actuellement ~1400 lignes - difficile à maintenir.
+
+**Solution** :
+Découper en modules logiques :
+
+```javascript
+// utils.js - Fonctions utilitaires
+export function cleanNumber(val) { /* ... */ }
+export function formatEuro(val) { /* ... */ }
+export function parseDividende(divString) { /* ... */ }
+
+// api.js - Interactions API
+export async function fetchData() { /* ... */ }
+export async function postTransaction(data) { /* ... */ }
+
+// calculations.js - Logique métier
+export function reconstructLive(dataLive, transactions, dividendes) { /* ... */ }
+export function calculatePerformance(transaction, cours) { /* ... */ }
+
+// charts.js - Graphiques
+export function updateBarChart(data) { /* ... */ }
+export function updatePieChart(data) { /* ... */ }
+export function updateCumulativeChart(data) { /* ... */ }
+
+// ui.js - Rendu interface
+export function renderDashboard(transactions, liveData) { /* ... */ }
+export function renderPositionCards(liveData) { /* ... */ }
+
+// main.js - Orchestration
+import { fetchData } from './api.js';
+import { renderDashboard } from './ui.js';
+// ...
+```
+
+---
+
+### 14. 🎨 Améliorer la gestion des modales
+
+**Créer un gestionnaire centralisé** :
+```javascript
+class ModalManager {
+    constructor() {
+        this.modals = new Map();
+    }
+    
+    register(id, onOpen = null, onClose = null) {
+        const modal = document.getElementById(id);
+        if (!modal) return;
+        
+        this.modals.set(id, { modal, onOpen, onClose });
+    }
+    
+    open(id, data = null) {
+        const entry = this.modals.get(id);
+        if (!entry) return;
+        
+        if (entry.onOpen) entry.onOpen(data);
+        entry.modal.style.display = 'flex';
+    }
+    
+    close(id) {
+        const entry = this.modals.get(id);
+        if (!entry) return;
+        
+        if (entry.onClose) entry.onClose();
+        entry.modal.style.display = 'none';
+    }
+}
+
+// Utilisation
+const modalManager = new ModalManager();
+modalManager.register('transactionModal', null, () => {
+    document.getElementById('transactionForm').reset();
+});
+modalManager.register('transactionDetailModal');
+modalManager.register('productHistoryModal');
+
+// Ouvrir une modale
+modalManager.open('transactionModal');
+```
+
+---
+
+## ✅ Checklist de mise en œuvre
+
+### Phase 1 - Corrections critiques (1-2h)
+- [X] Corriger `reconstructLive()` (bug #1)
+- [X] Réimplémenter `getProductDividend()` (bug #2)
+- [X] Dédupliquer calcul de `globalLive` (bug #3)
+- [X] Ajouter `globalDividendes` et `globalPlan` (bug #4)
+
+### Phase 2 - Optimisations (2-3h)
+- [X] Simplifier `showProductHistory()` (amélioration #5)
+- [X] Créer fonction `calculateTransactionPerformance()` (amélioration #6)
+- [X] Cohérence affichage noms/tickers (amélioration #7)
+- [X] Optimiser graphique cumulatif (amélioration #8)
+
+### Phase 3 - Nouvelles features (4-6h)
+- [ ] Suivi plans d'investissement (feature #9)
+- [ ] Graphique dividendes (feature #10)
+- [ ] Score de diversification (feature #11)
+- [ ] Système d'alertes (feature #12)
+
+### Phase 4 - Refactoring (optionnel, 6-8h)
+- [ ] Modulariser le code (refactor #13)
+- [ ] Gestionnaire de modales (refactor #14)
+
+---
+
+## 🎯 Impact estimé
+
+| Amélioration | Impact UX | Impact Performance | Difficulté | Priorité |
+|--------------|-----------|-------------------|------------|----------|
+| Bugs 1-4 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | 🟢 Facile | 🔴 Critique |
+| Optimisations 5-8 | ⭐⭐⭐ | ⭐⭐⭐⭐ | 🟢 Facile | 🟡 Moyenne |
+| Features 9-12 | ⭐⭐⭐⭐⭐ | ⭐⭐ | 🟡 Moyenne | 🟢 Nice-to-have |
+| Refactoring 13-14 | ⭐⭐ | ⭐⭐⭐⭐ | 🔴 Difficile | 🟢 Optionnel |
