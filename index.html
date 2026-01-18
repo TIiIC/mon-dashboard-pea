@@ -697,6 +697,156 @@
             #table-body-history td { padding: 12px 10px; }
             #table-body-history tr:active { background-color: rgba(37, 99, 235, 0.1); }
         }
+
+        /* Styles pour la grille de plans */
+.plans-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 20px;
+}
+
+/* Carte de plan */
+.plan-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: var(--shadow);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.plan-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 20px -5px rgba(0, 0, 0, 0.15);
+}
+
+.plan-card.plan-en-cours {
+    border-left: 4px solid var(--primary);
+}
+
+.plan-card.plan-cloture {
+    border-left: 4px solid var(--text-muted);
+    opacity: 0.8;
+}
+
+/* Header du plan */
+.plan-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 15px;
+}
+
+.plan-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 4px;
+}
+
+.plan-dates {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-family: monospace;
+}
+
+.plan-status-badge {
+    font-size: 0.7rem;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.status-en-cours {
+    background: var(--primary-light);
+    color: var(--primary);
+}
+
+.status-cloture {
+    background: var(--bg);
+    color: var(--text-muted);
+}
+
+/* Barre de progression */
+.plan-progress {
+    margin: 15px 0;
+}
+
+.progress-bar-container {
+    width: 100%;
+    height: 8px;
+    background: var(--bg);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.progress-100plus {
+    background: linear-gradient(90deg, var(--primary), var(--up));
+}
+
+.progress-75-100 {
+    background: var(--primary);
+}
+
+.progress-50-75 {
+    background: #f59e0b;
+}
+
+.progress-below-50 {
+    background: var(--down);
+}
+
+.progress-text {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+/* Stats du plan */
+.plan-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid var(--border);
+}
+
+.plan-stat {
+    display: flex;
+    flex-direction: column;
+}
+
+.plan-stat-label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.plan-stat-value {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.plan-stat-value.positive {
+    color: var(--up);
+}
+
+.plan-stat-value.negative {
+    color: var(--down);
+}
     </style>
 </head>
 <body>
@@ -726,6 +876,10 @@
             <i data-lucide="layout-dashboard"></i>
             <span>Résumé</span>
         </div>
+        <div class="nav-tab" data-tab="analyse">
+            <i data-lucide="trending-up"></i>
+            <span>Analyse</span>
+        </div>
         <div class="nav-tab" data-tab="transactions">
             <i data-lucide="history"></i>
             <span>Historique</span>
@@ -754,37 +908,7 @@
                     <canvas id="pieChart"></canvas>
                 </div>
             </div>
-            <div class="card">
-                <h3>Historique Versements</h3>
-                <div id="objective-info-container"></div>
-                <div class="chart-container">
-                    <canvas id="barChart"></canvas>
-                </div>
-            </div>
-        </div>
-
-        <div class="grid">
-            <div class="card">
-                <h3>Évolution Cumulative des Investissements</h3>
-                <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px;">
-                    <button class="period-btn active" data-period="1m" style="padding: 6px 12px; border: 1px solid var(--border); background: var(--bg); color: var(--text); border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">1 mois</button>
-                    <button class="period-btn" data-period="6m" style="padding: 6px 12px; border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">6 mois</button>
-                    <button class="period-btn" data-period="1y" style="padding: 6px 12px; border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">1 an</button>
-                    <button class="period-btn" data-period="ytd" style="padding: 6px 12px; border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">YTD</button>
-                    <button class="period-btn" data-period="5y" style="padding: 6px 12px; border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">5 ans</button>
-                    <button class="period-btn" data-period="max" style="padding: 6px 12px; border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">MAX</button>
-                    <button class="period-btn" data-period="custom" style="padding: 6px 12px; border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">Personnalisé</button>
-                </div>
-                <div id="custom-date-range" style="display: none; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
-                    <input type="date" id="custom-start-date" style="width: 200px; padding: 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--input-bg); color: var(--text);">
-                    <input type="date" id="custom-end-date" style="width: 200px; padding: 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--input-bg); color: var(--text);">
-                    <button id="apply-custom-range" style="padding: 6px 12px; border: 1px solid var(--primary); background: var(--primary); color: white; border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer;">Appliquer</button>
-                </div>
-                <div class="chart-container">
-                    <canvas id="cumulativeChart"></canvas>
-                </div>
-            </div>
-        </div>
+        </div>    
         
         <!-- Section Positions Actuelles transformée en Grille -->
         <div style="margin-top: 25px;">
@@ -795,6 +919,53 @@
             </div>
         </div>
     </main>
+
+    <main id="tab-analyse" class="tab-content">
+    <!-- Historique Versements -->
+    <div class="grid">
+        <div class="card">
+            <h3>Historique Versements</h3>
+            <div id="objective-info-container"></div>
+            <div class="chart-container">
+                <canvas id="barChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Évolution Cumulative -->
+    <div class="grid">
+        <div class="card">
+            <h3>Évolution Cumulative des Investissements</h3>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px;">
+                <button class="period-btn active" data-period="1m" style="padding: 6px 12px; border: 1px solid var(--border); background: var(--bg); color: var(--text); border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">1 mois</button>
+                <button class="period-btn" data-period="6m" style="padding: 6px 12px; border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">6 mois</button>
+                <button class="period-btn" data-period="1y" style="padding: 6px 12px; border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">1 an</button>
+                <button class="period-btn" data-period="ytd" style="padding: 6px 12px; border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">YTD</button>
+                <button class="period-btn" data-period="5y" style="padding: 6px 12px; border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">5 ans</button>
+                <button class="period-btn" data-period="max" style="padding: 6px 12px; border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">MAX</button>
+                <button class="period-btn" data-period="custom" style="padding: 6px 12px; border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">Personnalisé</button>
+            </div>
+            <div id="custom-date-range" style="display: none; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
+                <input type="date" id="custom-start-date" style="width: 200px; padding: 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--input-bg); color: var(--text);">
+                <input type="date" id="custom-end-date" style="width: 200px; padding: 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--input-bg); color: var(--text);">
+                <button id="apply-custom-range" style="padding: 6px 12px; border: 1px solid var(--primary); background: var(--primary); color: white; border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer;">Appliquer</button>
+            </div>
+            <div class="chart-container">
+                <canvas id="cumulativeChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- NOUVEAU : Suivi Plans d'Investissement -->
+    <div style="margin-top: 25px;">
+        <h3 style="font-size: 0.9rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 15px; padding-left: 5px;">
+            Suivi des Plans d'Investissement
+        </h3>
+        <div id="plans-container" class="plans-grid">
+            <!-- Cartes générées dynamiquement par JavaScript -->
+        </div>
+    </div>
+</main>
 
     <main id="tab-transactions" class="tab-content">
         <div class="card" style="padding: 10px; overflow-x: auto;">

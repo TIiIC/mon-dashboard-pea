@@ -300,17 +300,17 @@ function processData(result) {
     // Stocker les données globales
     globalTransactions = result.transactions || [];
     globalDividendes = result.dividende || [];
-    globalPlan = result.plan || []; 
+    globalPlan = result.plan || [];
+
     globalLive = reconstructLive(result.dataLive, globalTransactions, globalDividendes);
     
     // Créer la map Ticker -> Nom à partir des données Live calculées
+    tickerToNameMap = {};
     globalLive.forEach(item => {
         const ticker = (item.ticker || item.ticker_backup || "").toUpperCase().trim();
         const name = item.liste_produits || item.ticker;
         if (ticker) tickerToNameMap[ticker] = name;
     });
-
-    console.log('reconstructLive result:', globalLive);
     
     // Vérifier les données historiques (dataLive vs historiqueProduit)
     if (result.dataLive && result.historiqueProduit) {
@@ -321,8 +321,11 @@ function processData(result) {
         }
     }
     
-    // Lancer le rendu visuel
-    renderDashboard(globalTransactions, globalLive);
+    const { plans: plansAnalyses, monthlyStats } = analyzeInvestmentPlans(globalPlan, globalTransactions);
+    
+    // Rendu du dashboard avec les données traitées
+    renderDashboard(globalTransactions, globalLive, monthlyStats);
+    renderPlansSection(plansAnalyses); // Section Plans d'investissement
 }
 
 // Variables globales pour stocker les données de vérification
@@ -838,7 +841,7 @@ function formatEuro(val) {
 
 // --- Rendu du Dashboard ---
 // Rendu de la table des transactions et des cartes de positions
-function renderDashboard(transactions, liveData) {
+function renderDashboard(transactions, liveData, planMonthlyStats = {}) {
     const now = new Date();
     document.getElementById('last-update').innerText = "Dernière màj: " + now.toLocaleDateString('fr-FR') + " à " + now.toLocaleTimeString('fr-FR',{ hour: '2-digit', minute: '2-digit' });
     
@@ -889,20 +892,27 @@ function renderDashboard(transactions, liveData) {
         let totalActuel = 0;
         let totalInvesti = 0;
         let totaldiv = 0;
-        let statsMois = {};
         let statsProduit = {};
 
         // Calculs préliminaires (identique à avant)
         transactions.forEach(t => {
             const val = cleanNumber(t.total);
             totalInvesti += val;
-            const date = new Date(t.date);
-            const label = date.toLocaleDateString('fr-FR', {month: 'short', year: '2-digit'});
-            statsMois[label] = (statsMois[label] || 0) + val;
         });
 
+        // Filtrage des données Live pour ne garder que celles possédées
+        const tickersPossedes = new Set();
+        transactions.forEach(t => {
+            if (t.code) tickersPossedes.add(t.code.toUpperCase());
+        });
+        
+        // Filtrage des liveData
+        const liveDataFiltered = liveData.filter(item => {
+            if(item.ticker && !tickersPossedes.has(item.ticker.toUpperCase())) return false;
+            return true;
+        });
         // Génération des cartes - Triées de la plus importante à la moins importante
-        const sortedLiveData = [...liveData].sort((a, b) => {
+        const sortedLiveData = [...liveDataFiltered].sort((a, b) => {
             const sommeA = cleanNumber(a.somme) || 0;
             const sommeB = cleanNumber(b.somme) || 0;
             return sommeB - sommeA; // Ordre décroissant (plus important en premier)
@@ -997,7 +1007,7 @@ function renderDashboard(transactions, liveData) {
         document.getElementById('total-gain').innerHTML = `<span class="${gain>=0?'trend-up':'trend-down'}" style="font-weight:800">${gain >= 0 ? "+" : ""}${formatEuro(gain)}</span>`;
         document.getElementById('live-perf-global').innerHTML = `<span class="${gain>=0?'trend-up':'trend-down'}" style="font-weight:bold">${gain >= 0 ? "+" : ""}${perfG.toFixed(2)}%</span>`;
 
-        updateCharts(statsMois, statsProduit);
+        updateCharts(planMonthlyStats, statsProduit);
         updateCumulativeChart(transactions);
     }
 }
@@ -1038,37 +1048,55 @@ function updateTickerDropdown() {
         document.getElementById('closeModalBtn').addEventListener('click', () => {
             document.getElementById('transactionModal').style.display = 'none';
         });
-function updateCharts(dataMois, dataProduit) {
+function updateCharts(monthlyStats, dataProduit) {
     const bCtx = document.getElementById('barChart');
     if (bCtx && bCtx.getContext) {
         if (barChartInstance) barChartInstance.destroy();
         
         // Calculs pour la cible
-        const moisLabels = Object.keys(dataMois);
-        const moisValues = Object.values(dataMois);
-        const moisActuel = moisLabels[moisLabels.length - 1];
-        const valeurMoisActuel = moisValues[moisValues.length - 1] || 0;
-        const ecartMoisActuel = valeurMoisActuel - monthlyObjective;
+        const moisLabels = Object.keys(monthlyStats);
+        if (moisLabels.length === 0) return;
+        
+        const realizedValues = moisLabels.map(label => monthlyStats[label].realized);
+        const targetValues = moisLabels.map(label => monthlyStats[label].target);
+        
         const indexMoisActuel = moisLabels.length - 1;
+        const labelMoisActuel = moisLabels[indexMoisActuel];
+
+        const targetMoisActuel = targetValues[indexMoisActuel] || 0;
+        const valeurMoisActuel = realizedValues[indexMoisActuel] || 0;
+        const ecartMoisActuel = valeurMoisActuel - targetMoisActuel;
         
         // Calcul du surplus/manque cumulé sur l'année
         let surplusTotal = 0;
-        moisValues.forEach(val => {
-            surplusTotal += (val - monthlyObjective);
+        moisLabels.forEach((label, i) => {
+            surplusTotal += (monthlyStats[label].realized - monthlyStats[label].target);
         });
         
         // Créer les datasets empilés avec couleurs conditionnelles
         // Dataset 1 (BLEU): La partie jusqu'à l'objectif
-        const blueData = moisValues.map(val => Math.min(val, monthlyObjective));
+        const blueData = moisLabels.map((l, i) => Math.min(monthlyStats[l].realized, monthlyStats[l].target));
         
         // Dataset 2 (VERT): Le surplus (au-dessus de l'objectif)
-        const greenData = moisValues.map(val => Math.max(0, val - monthlyObjective));
+        const greenData = moisLabels.map((l, i) => Math.max(0, monthlyStats[l].realized - monthlyStats[l].target));
         
         // Dataset 3 (ROUGE): Le manque pour les mois passés seulement
-        const redData = moisValues.map((val, i) => {
-            // Seulement pour les mois passés (i < mois courant) et si objectif non atteint
-            if (i < indexMoisActuel && val < monthlyObjective) {
-                return monthlyObjective - val;
+        const redData = moisLabels.map((l, i) => {
+            const r = monthlyStats[l].realized;
+            const t = monthlyStats[l].target;
+            // Seulement pour les mois passés
+            if (r < t && l !== labelMoisActuel) {
+                return t - r;
+            }
+            return 0;
+        });
+        // Dataset 4 (BLEU CLAIR): Le restant à faire pour le mois en cours
+        const bluelightData = moisLabels.map((l, i) => {
+            const r = monthlyStats[l].realized;
+            const t = monthlyStats[l].target;
+            // Seulement pour le mois actuel
+            if (r < t && l === labelMoisActuel) {
+                return t - r;
             }
             return 0;
         });
@@ -1078,25 +1106,57 @@ function updateCharts(dataMois, dataProduit) {
             data: { 
                 labels: moisLabels, 
                 datasets: [
+                    {
+                        type: 'line',
+                        label: 'Ligne Objectif',
+                        data: targetValues,
+                        borderColor: '#ef4444',
+                        borderWidth: 2,
+                        borderDash: [6, 5],
+                        pointRadius: 0,
+                        stepped : 'before',
+                        xAxisId: 'x2',
+                        stepped: 'middle',
+                        fill: false,
+                        order: 1,
+                    },
                     { 
-                        label: 'Atteint', 
+                        type: 'bar',
+                        label: 'Objectif', 
                         data: blueData, 
                         backgroundColor: '#3b82f6',
-                        borderRadius: [4, 4, 0, 0],
+                        borderRadius: [4, 4, 0, 0], // Arrondi seulement si c'est le haut de pile
+                        xAxisId: 'x1',
                         order: 2
                     },
                     {
+                        type: 'bar',
+                        label: 'Restant',
+                        data: bluelightData,
+                        backgroundColor: 'rgba(59, 131, 246, 0.3)', // Plus transparent
+                        borderRadius: [4, 4, 0, 0],
+                        borderWidth: 1,
+                        borderColor: '#3b82f6',
+                        borderDash: [5, 5], // Pointillé pour montrer que c'est virtuel
+                        xAxisId: 'x1',
+                        order: 2
+                    },
+                    {
+                        type: 'bar',
                         label: 'Surplus',
                         data: greenData,
                         backgroundColor: '#10b981',
                         borderRadius: [4, 4, 0, 0],
+                        xAxisId: 'x1',
                         order: 2
                     },
                     {
-                        label: 'Manque (mois passés)',
+                        type: 'bar',
+                        label: 'Manquant',
                         data: redData,
                         backgroundColor: '#ef4444',
                         borderRadius: [4, 4, 0, 0],
+                        xAxisId: 'x1',
                         order: 2
                     }
                 ]
@@ -1106,75 +1166,154 @@ function updateCharts(dataMois, dataProduit) {
                 maintainAspectRatio: false,
                 interaction: { mode: 'index', intersect: false },
                 indexAxis: undefined,
+                animation: {
+                    duration: 1200, // Durée totale un peu plus longue
+                    easing: 'easeOutQuart', // Effet de freinage fluide à la fin
+                    delay: (context) => {
+                        // Délai progressif : chaque barre démarre un peu après la précédente
+                        let delay = 0;
+                        if (context.type === 'data' && context.mode === 'default') {
+                            delay = context.dataIndex * 100 + context.datasetIndex * 50;
+                        }
+                        return delay;
+                    }
+                },
                 plugins: { 
                     legend: { 
                         display: true,
-                        labels: {
-                            padding: 15,
-                            font: { size: 11 },
-                            boxWidth: 10
-                        }
+                        position: 'bottom',
+                        labels: { padding: 15, font: { size: 10 }, boxWidth: 8, usePointStyle: true }
                     },
                     tooltip: {
                         callbacks: {
                             label: function(context) {
                                 let label = context.dataset.label || '';
                                 if (label) label += ': ';
-                                
                                 if (context.parsed.y !== null) {
-                                    label += new Intl.NumberFormat('fr-FR', { 
-                                        style: 'currency', 
-                                        currency: 'EUR' 
-                                    }).format(context.parsed.y);
+                                    label += new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(context.parsed.y);
                                 }
-                                
                                 return label;
                             },
-                            footer: function(context) {
-                                if (context && context.length > 0) {
-                                    const dataIndex = context[0].dataIndex;
-                                    const totalValue = moisValues[dataIndex];
-                                    const footer = `Total: ${new Intl.NumberFormat('fr-FR', { 
-                                        style: 'currency', 
-                                        currency: 'EUR' 
-                                    }).format(totalValue)}`;
-                                    
-                                    // Ajouter l'écart pour le mois courant
-                                    if (dataIndex === indexMoisActuel) {
-                                        const ecart = totalValue - monthlyObjective;
-                                        return footer + ` | Écart: ${ecart >= 0 ? '+' : ''}${new Intl.NumberFormat('fr-FR', { 
-                                            style: 'currency', 
-                                            currency: 'EUR' 
-                                        }).format(ecart)}`;
-                                    }
-                                    
-                                    return footer;
-                                }
-                                return '';
-                            }
                         }
                     }
                 },
                 scales: { 
-                    x: {
-                        stacked: true
+                    x1: {
+                        type: 'category',
+                        stacked: true,
+                        display: false, // On cache les labels pour ne pas dupliquer
+                        offset: true, // Les barres sont centrées
+                        grid: { display: false } // Cleaner
+                    },
+                    x2: { 
+                        type : 'category',
+                        display: false, // On cache les labels pour ne pas dupliquer
+                        offset: false,   // TRUE = Aligné avec les barres (centré), FALSE = Aligné avec la grille (début du mois)
+                        grid: { display: false },
+                        stacked: false // Important : ne pas empiler la ligne
                     },
                     y: { 
                         stacked: true,
                         beginAtZero: true, 
-                        grid: { display: false },
-                        ticks: {
-                            callback: function(value) {
-                                return value + ' €';
+                        grid: { color: 'rgba(200, 200, 200, 0.1)' },
+                        ticks: { callback: function(value) { return value + ' €'; }, font: {size: 10} } 
+                    }
+                },
+            },
+            plugins: [{
+                id: 'topLabels',
+                afterDatasetsDraw: (chart) => {
+                    const { ctx, scales: { x, y } } = chart;
+                    
+                    chart.data.labels.forEach((label, index) => {
+                        // 1. Calculer la différence réelle (Surplus ou Manque)
+                        const realized = monthlyStats[label].realized;
+                        const target = monthlyStats[label].target;
+                        const diff = realized - target;
+                        
+                        // Ne rien afficher si l'écart est minime (moins de 1€)
+                        if (Math.abs(diff) < 1) return;
+
+                        // 2. Trouver la position Y la plus haute de la pile pour ce mois
+                        // On parcourt tous les datasets visibles pour trouver le point le plus haut (valeur Y minimale en pixels)
+                        let topY = y.getPixelForValue(0);
+                        chart.data.datasets.forEach((dataset, i) => {
+                            const meta = chart.getDatasetMeta(i);
+                            if (!meta.hidden && dataset.data[index]) {
+                                const model = meta.data[index];
+                                // Attention: en canvas, Y=0 est en haut. Donc on cherche le Y le plus petit.
+                                if (model && model.y < topY) {
+                                    topY = model.y;
+                                }
                             }
-                        }
-                    } 
+                        });
+
+                        // 3. Dessiner le texte
+                        ctx.save();
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'bottom';
+                        ctx.font = 'bold 10px sans-serif';
+                        
+                        // Couleur conditionnelle
+                        ctx.fillStyle = diff >= 0 ? '#10b981' : '#ef4444';
+                        
+                        // Texte : +XX € ou -XX €
+                        const sign = diff >= 0 ? '+' : '';
+                        const text = `${sign}${Math.round(diff)} €`;
+                        
+                        // Position : un peu au-dessus de la barre (topY - 5px)
+                        ctx.fillText(text, x.getPixelForValue(index), topY - 5);
+                        ctx.restore();
+                    });
                 }
-            }
+            }]
         });
-        
-        // Mise à jour des informations d'objectif
-        updateObjectiveDisplay(valeurMoisActuel, ecartMoisActuel, surplusTotal, moisActuel);
+
+        const container = document.getElementById('objective-info-container');
+        if (!container) return;
+    
+        const ecartClass = ecartMoisActuel >= 0 ? 'trend-up' : 'trend-down';
+        const ecartIcon = ecartMoisActuel >= 0 ? '▲' : '▼';
+        const surplusClass = surplusTotal >= 0 ? 'trend-up' : 'trend-down';
+        const surplusIcon = surplusTotal >= 0 ? '▲' : '▼';
+        const surplusLabel = surplusTotal >= 0 ? 'Excédent' : 'Déficit';
+    
+        // Nouvelle mise en page plus aérée et visuelle
+        container.innerHTML = `
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+                
+                <!-- Carte Mois Actuel -->
+                <div style="background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 15px; display: flex; flex-direction: column; gap: 5px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">Mois de ${labelMoisActuel}</span>
+                        <span style="font-size: 0.75rem; background: var(--bg); padding: 2px 8px; border-radius: 4px; color: var(--text-muted);">Cible: ${formatEuro(targetMoisActuel)}</span>
+                    </div>
+                    <div style="display: flex; align-items: baseline; gap: 10px;">
+                        <span style="font-size: 1.5rem; font-weight: 800; color: var(--text);">${formatEuro(valeurMoisActuel)}</span>
+                        <div class="${ecartClass}" style="font-weight: 600; font-size: 0.9rem; display: flex; align-items: center; gap: 2px;">
+                            ${ecartIcon} ${formatEuro(Math.abs(ecartMoisActuel))}
+                        </div>
+                    </div>
+                    <div style="height: 4px; width: 100%; background: var(--bg); border-radius: 2px; margin-top: 5px; overflow: hidden;">
+                        <div style="height: 100%; width: ${Math.min(100, (valeurMoisActuel/targetMoisActuel)*100)}%; background-color: ${ecartMoisActuel >= 0 ? '#10b981' : '#3b82f6'}; border-radius: 2px;"></div>
+                    </div>
+                </div>
+
+                <!-- Carte Bilan Annuel -->
+                <div style="background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 15px; display: flex; flex-direction: column; justify-content: center; gap: 5px;">
+                    <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">Bilan Annuel</span>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                         <span class="${surplusClass}" style="font-size: 1.5rem; font-weight: 800;">
+                            ${surplusIcon} ${surplusTotal >= 0 ? '+' : ''}${formatEuro(surplusTotal)}
+                        </span>
+                        <span style="font-size: 0.8rem; color: var(--text-muted); background: var(--bg); padding: 4px 8px; border-radius: 6px;">
+                            ${surplusLabel} cumulé
+                        </span>
+                    </div>
+                </div>
+
+            </div>
+        `;
     }
 
     const pCtx = document.getElementById('pieChart');
@@ -1196,8 +1335,19 @@ function updateCharts(dataMois, dataProduit) {
                 responsive: true, 
                 maintainAspectRatio: false, 
                 cutout: '65%',
+                animation: {
+                    duration: 1000,
+                    // Animation personnalisée pour chaque segment (Staggering)
+                    delay: (context) => {
+                        let delay = 0;
+                        if (context.type === 'data' && context.mode === 'default') {
+                            delay = context.dataIndex * 100;
+                        }
+                        return delay;
+                    },
+                },
                 plugins: { 
-                    legend: { position: 'bottom', labels: { boxWidth: 12, padding: 15, font: { size: 11 } } },
+                    legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 12, padding: 15, font: { size: 12, weight: '600' } } },
                     tooltip: {
                         callbacks: {
                             label: function(context) {
@@ -1219,7 +1369,15 @@ function updateCharts(dataMois, dataProduit) {
                             }
                         }
                     }
-                } 
+                },
+                transitions: {
+                    active: {
+                        animation: {
+                            duration: 400,
+                        }
+                    }
+                },
+                
             }
         });
     }
@@ -1276,16 +1434,14 @@ function updateCumulativeChart(transactions) {
         .filter(t => new Date(t.date) < startDate)
         .reduce((sum, t) => sum + cleanNumber(t.total), 0);
     
-    // 2. Groupement Linéaire (Optimisation Point 8)
+    // 2. Groupement Linéaire par date et calcul cumulatif
     const uniqueDates = [];
     const uniqueValues = [];
     let runningTotal = initialTotal;
     
-    // Ajout d'un point de départ pour l'esthétique (Optionnel mais recommandé)
     if (filteredTransactions.length > 0 && initialTotal > 0) {
-        // Optionnel : on pourrait ajouter le point de départ ici
-        // uniqueDates.push(startDate.toLocaleDateString('fr-FR'));
-        // uniqueValues.push(initialTotal);
+        uniqueDates.push(startDate.toLocaleDateString('fr-FR'));
+        uniqueValues.push(initialTotal);
     }
     
     filteredTransactions.forEach(t => {
@@ -1302,7 +1458,7 @@ function updateCumulativeChart(transactions) {
         }
     });
 
-    // Création d'un dégradé pour le remplissage (Bonus UI)
+    // Création d'un dégradé pour le remplissage du graphique
     const ctx = cCtx.getContext('2d');
     const gradient = ctx.createLinearGradient(0, 0, 0, 400);
     gradient.addColorStop(0, 'rgba(59, 130, 246, 0.4)'); // Bleu plus opaque en haut
@@ -1331,6 +1487,12 @@ function updateCumulativeChart(transactions) {
             responsive: true,
             maintainAspectRatio: false,
             interaction: { mode: 'index', intersect: false },
+            animation: {
+                    // Les barres montent les unes après les autres comme une onde
+                    delay: (context) => context.dataIndex * 10,
+                    duration: 1000,
+                    easing: 'easeOutBack' // Petit dépassement puis retour en place
+                },
             plugins: {
                 legend: {
                     display: true,
@@ -1411,46 +1573,253 @@ function updateCumulativeChart(transactions) {
     });
 }
 
-// Mise à jour de l'affichage des informations d'objectif   
-function updateObjectiveDisplay(valeurMois, ecartMois, surplusAnnuel, moisLabel) {
-    const container = document.getElementById('objective-info-container');
-    if (!container) return;
-    
-    const ecartClass = ecartMois >= 0 ? 'trend-up' : 'trend-down';
-    const ecartText = ecartMois >= 0 ? 'Surplus' : 'Manque';
-    const surplusClass = surplusAnnuel >= 0 ? 'trend-up' : 'trend-down';
-    
-    container.innerHTML = `
-        <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center; padding: 12px; background: var(--bg); border-radius: 12px; border: 1px solid var(--border); margin-bottom: 15px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">OBJECTIF</span>
-                <input type="number" id="objective-input" value="${monthlyObjective}" min="0" step="50" 
-                    style="width: 80px; padding: 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--input-bg); color: var(--text); font-weight: 600; text-align: center;"
-                    onchange="updateMonthlyObjective(this.value)">
-                <span style="font-size: 0.75rem; color: var(--text-muted);">€/mois</span>
-            </div>
-            
-            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--card); border-radius: 8px; border: 1px solid var(--border);">
-                <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">MOIS (${moisLabel})</span>
-                <span style="font-weight: 700; color: var(--text);">${formatEuro(valeurMois)}</span>
-                <span class="pos-perf-badge ${ecartClass}" style="font-size: 0.75rem; padding: 4px 8px;">
-                    ${ecartMois >= 0 ? '▲' : '▼'} ${ecartText}: ${formatEuro(Math.abs(ecartMois))}
-                </span>
-            </div>
-            
-            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--card); border-radius: 8px; border: 1px solid var(--border);">
-                <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">BILAN ANNUEL</span>
-                <span class="${surplusClass}" style="font-weight: 700;">
-                    ${surplusAnnuel >= 0 ? '▲ Surplus' : '▼ Manque'}: ${formatEuro(Math.abs(surplusAnnuel))}
-                </span>
-            </div>
-        </div>
-    `;
-}
-
 // Fonction pour mettre à jour l'objectif mensuel
 function updateMonthlyObjective(value) {
     monthlyObjective = parseFloat(value) || 500;
     localStorage.setItem('pea_monthly_objective', monthlyObjective);
     fetchData(); // Recharger pour mettre à jour les graphiques
+}
+
+// --- ANALYSE DES PLANS D'INVESTISSEMENT (LOGIQUE PRO-RATA) ---
+
+/**
+ * Calcule la distribution des investissements réels sur les plans actifs
+ * selon une logique de pro-rata mensuel.
+ * Retourne aussi les stats mensuelles globales (Cible vs Réel).
+ */
+function distributeInvestmentsByMonth(plans, transactions) {
+    // 1. Regrouper les investissements réels par mois (Clé: "YYYY-MM")
+    const investmentsByMonth = {};
+    transactions.forEach(t => {
+        const d = new Date(t.date);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        investmentsByMonth[key] = (investmentsByMonth[key] || 0) + cleanNumber(t.total);
+    });
+
+    // Tableau pour stocker le total accumulé pour chaque plan (par index)
+    const planRealizedTotals = new Array(plans.length).fill(0);
+    // Objet pour stocker les stats mensuelles pour le graphique
+    const monthlyStats = {};
+
+    // 2. Parcourir chaque mois où de l'argent a été investi
+    Object.keys(investmentsByMonth).sort().forEach(monthKey => {
+        const amountToDistribute = investmentsByMonth[monthKey];
+        if (amountToDistribute <= 0) return;
+
+        // Reconstruire les dates de début et fin du mois courant pour comparaison
+        const [year, month] = monthKey.split('-').map(Number);
+        const monthStart = new Date(year, month - 1, 1);
+        const monthEnd = new Date(year, month, 0); // Dernier jour du mois
+
+        // Label pour le graphique (ex: "janv. 23")
+        const label = monthStart.toLocaleDateString('fr-FR', {month: 'short', year: '2-digit'});
+
+        // 3. Identifier les plans actifs durant ce mois spécifique
+        const activePlansIndices = [];
+        let totalTargetForMonth = 0;
+
+        plans.forEach((plan, index) => {
+            const pStart = new Date(plan.date_début);
+            // Si pas de date de clôture, on considère jusqu'à aujourd'hui/futur
+            const pEnd = plan.date_de_cloture && plan.date_de_cloture !== "" 
+                ? new Date(plan.date_de_cloture) 
+                : new Date(); 
+
+            // Vérifier chevauchement de dates : (PlanStart <= MonthEnd) ET (PlanEnd >= MonthStart)
+            if (pStart <= monthEnd && pEnd >= monthStart) {
+                activePlansIndices.push(index);
+                totalTargetForMonth += cleanNumber(plan.montant); // "montant" est la cible mensuelle du plan
+            }
+        });
+
+        // Stocker les stats globales pour ce mois
+        monthlyStats[label] = {
+            realized: amountToDistribute,
+            target: totalTargetForMonth
+        };
+
+        // 4. Distribuer le montant réel proportionnellement aux cibles
+        if (activePlansIndices.length > 0) {
+            activePlansIndices.forEach(index => {
+                const plan = plans[index];
+                const target = cleanNumber(plan.montant);
+                
+                let share = 0;
+                if (totalTargetForMonth > 0) {
+                    // Formule : (Cible du Plan / Total des Cibles Actives) * Argent Réellement Investi
+                    const ratio = target / totalTargetForMonth;
+                    share = amountToDistribute * ratio;
+                } else {
+                    // Si plans actifs mais cibles à 0 (cas limite), répartition égale ?
+                    // Ici on laisse à 0 pour éviter division par zéro
+                }
+                
+                planRealizedTotals[index] += share;
+            });
+        }
+        // Note: Si aucun plan n'est actif ce mois-là, l'argent "Investi" n'est attribué à aucun plan.
+    });
+
+    return { 
+        totals: planRealizedTotals, 
+        monthlyStats: monthlyStats 
+    };
+}
+
+function analyzeInvestmentPlans(plans, transactions) {
+    if (!plans || !Array.isArray(plans)) return { plans: [], monthlyStats: {} };
+    
+    // Étape 1 : Calculer la répartition intelligente (Pro-rata)
+    const { totals: realizedTotals, monthlyStats } = distributeInvestmentsByMonth(plans, transactions);
+
+    // Étape 2 : Construire les objets complets
+    const analyzedPlans = plans.map((plan, index) => {
+        // Dates du plan
+        const dateDebut = new Date(plan.date_début);
+        const dateFin = plan.date_de_cloture && plan.date_de_cloture !== ""
+            ? new Date(plan.date_de_cloture) 
+            : new Date(); // Si "En Cours", jusqu'à aujourd'hui
+        
+        // Calcul du prévisionnel
+        // Nombre de mois théoriques touchés par le plan
+        const dureeMois = (dateFin.getFullYear() - dateDebut.getFullYear()) * 12 + (dateFin.getMonth() - dateDebut.getMonth()) + (dateFin.getDate() >= dateDebut.getDate() ? 1 : 0);
+        // Ajustement fin : on compte souvent le mois entamé comme 1 mois complet ou on fait un diff précis.
+        // Ici on garde ta logique précédente ou une version simplifiée :
+        const monthsDiff = (dateFin.getFullYear() - dateDebut.getFullYear()) * 12 + (dateFin.getMonth() - dateDebut.getMonth());
+        // On s'assure d'avoir au moins 1 mois si les dates sont proches
+        const dureeMoisEffective = Math.max(1, monthsDiff);
+        
+        const montantPrevu = cleanNumber(plan.montant) * dureeMoisEffective;
+        
+        
+        // Récupération du montant réalisé calculé par la fonction de distribution
+        const montantRealise = realizedTotals[index];
+        
+        // Calculer écart et taux
+        const ecart = montantRealise - montantPrevu;
+        const ecartActuel = montantRealise - (cleanNumber(plan.montant) * (Math.min(dureeMoisEffective, Math.max(0, ((new Date().getFullYear() - dateDebut.getFullYear()) * 12 + (new Date().getMonth() - dateDebut.getMonth()) + (new Date().getDate() >= dateDebut.getDate() ? 1 : 0))))));
+        const tauxRealisation = montantPrevu > 0 
+            ? (montantRealise / montantPrevu) * 100 
+            : 0;
+        
+        // Durée temporelle (pour la progression "Temps")
+        const dureeJours = Math.max(1, Math.ceil((dateFin - dateDebut) / (1000 * 60 * 60 * 24)));
+        const dureeEcoulee = Math.max(0, Math.ceil((new Date() - dateDebut) / (1000 * 60 * 60 * 24)));
+        
+        let progressionTemps = 0;
+        if (plan.statut === "Clôturé") {
+            progressionTemps = 100;
+        } else {
+            progressionTemps = Math.min(100, (dureeEcoulee / dureeJours) * 100);
+        }
+        
+        // Compter les transactions (Juste pour info, même si le montant est redistribué)
+        const transactionsPeriode = transactions.filter(t => {
+            const tDate = new Date(t.date);
+            return tDate >= dateDebut && tDate <= dateFin;
+        }).length;
+        
+        return {
+            ...plan,
+            montantPrevu,
+            montantRealise,
+            ecart,
+            ecartActuel,
+            tauxRealisation: Math.round(tauxRealisation),
+            nbTransactions: transactionsPeriode, // Nombre de transactions dans la période (indicatif)
+            dureeJours,
+            progressionTemps: Math.round(progressionTemps),
+            dateDebut,
+            dateFin
+        };
+    });
+
+    return { 
+        plans: analyzedPlans,
+        monthlyStats: monthlyStats
+    };
+}
+
+// --- RENDU DES PLANS ---
+function renderPlansSection(plansAnalyses) {
+    const container = document.getElementById('plans-container');
+    if (!container) return;
+    
+    // Trier : En Cours en premier, puis par date décroissante
+    const sortedPlans = [...plansAnalyses].sort((a, b) => {
+        if (a.statut === "En Cours" && b.statut !== "En Cours") return -1;
+        if (a.statut !== "En Cours" && b.statut === "En Cours") return 1;
+        return new Date(b.date_debut) - new Date(a.date_debut);
+    });
+    
+    if (sortedPlans.length === 0) {
+        container.innerHTML = `
+            <div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 40px;">
+                Aucun plan d'investissement configuré.
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = sortedPlans.map(plan => {
+        const isEnCours = plan.statut === "En Cours";
+        const statusClass = isEnCours ? 'status-en-cours' : 'status-cloture';
+        const cardClass = isEnCours ? 'plan-en-cours' : 'plan-cloture';
+        
+        // Classe de progression selon taux
+        let progressClass = 'progress-below-50';
+        if (plan.tauxRealisation >= 100) progressClass = 'progress-100plus';
+        else if (plan.tauxRealisation >= 75) progressClass = 'progress-75-100';
+        else if (plan.tauxRealisation >= 50) progressClass = 'progress-50-75';
+        
+        // Formatage dates
+        const dateDebutStr = plan.dateDebut.toLocaleDateString('fr-FR');
+        const dateFinStr = plan.dateFin.toLocaleDateString('fr-FR');
+        
+        return `
+            <div class="plan-card ${cardClass}">
+                <!-- Header -->
+                <div class="plan-header">
+                    <div>
+                        <div class="plan-title">${plan.commentaire || 'Plan sans titre'}</div>
+                        <div class="plan-dates">${dateDebutStr} → ${dateFinStr}</div>
+                    </div>
+                    <span class="plan-status-badge ${statusClass}">${plan.statut}</span>
+                </div>
+                
+                <!-- Barre de progression -->
+                <div class="plan-progress">
+                    <div class="progress-bar-container">
+                        <div class="progress-bar-fill ${progressClass}" 
+                             style="width: ${Math.min(100, plan.tauxRealisation)}%">
+                        </div>
+                    </div>
+                    <div class="progress-text">
+                        <span>${plan.tauxRealisation}% réalisé</span>
+                        <span>${formatEuro(plan.montantRealise)} / ${formatEuro(plan.montantPrevu)}</span>
+                    </div>
+                </div>
+                
+                <!-- Stats -->
+                <div class="plan-stats">
+                    <div class="plan-stat">
+                        <div class="plan-stat-label">Écart / Previsionnel</div>
+                        <div class="plan-stat-value ${plan.ecartActuel >= 0 ? 'positive' : 'negative'}">
+                            ${plan.ecartActuel >= 0 ? '+' : ''}${formatEuro(plan.ecartActuel)}
+                        </div>
+                    </div>
+                    <div class="plan-stat">
+                        <div class="plan-stat-label">Transactions</div>
+                        <div class="plan-stat-value">${plan.nbTransactions}</div>
+                    </div>
+                </div>
+                
+                ${isEnCours ? `
+                    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 0.75rem; color: var(--text-muted);">
+                        ⏱️ Progression temporelle : ${plan.progressionTemps}% (${plan.dureeJours} jours)
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }).join('');
 }
