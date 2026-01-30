@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html lang="fr">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Dashboard PEA</title>
-    
+
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" href="icon.png?v=2">
     <meta name="theme-color" content="#ffffff">
@@ -20,6 +21,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
 </head>
+
 <body>
 
     <!-- LOADER -->
@@ -27,19 +29,42 @@
         <div class="loader-spinner"></div>
         <div id="loader-text" style="margin-top: 15px; font-weight: 600; font-size: 0.9rem;">Chargement...</div>
     </div>
-    
+
     <header>
         <div class="logo-area">
             <div class="logo-img-wrapper">
-                <img src="icon.png?v=2" alt="Logo" onerror="this.style.display='none'"/>
+                <img src="icon.png?v=2" alt="Logo" onerror="this.style.display='none'" />
             </div>
             <div>
                 <h1 class="header-title">Portefeuille</h1>
                 <small id="last-update" class="header-subtitle">Connexion...</small>
             </div>
         </div>
-        <div id="status" class="status-badge">...</div>
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <button id="notification-bell" class="notification-bell" aria-label="Notifications dividendes">
+                <i data-lucide="bell"></i>
+                <span id="notification-badge" class="notification-badge" style="display: none;">0</span>
+            </button>
+            <div id="status" class="status-badge">...</div>
+        </div>
     </header>
+
+    <!-- PANNEAU DE NOTIFICATIONS -->
+    <div id="notification-panel" class="notification-panel" style="display: none;">
+        <div class="notification-panel-header">
+            <h3 style="margin: 0; font-size: 1rem; font-weight: 700;">
+                <i data-lucide="bell" style="width: 18px; height: 18px; vertical-align: middle; margin-right: 8px;"></i>
+                Dividendes à venir
+            </h3>
+            <button id="close-notification-panel"
+                style="background: none; border: none; cursor: pointer; padding: 4px;">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+        </div>
+        <div id="notification-list" class="notification-list">
+            <!-- Rempli dynamiquement -->
+        </div>
+    </div>
 
     <nav class="nav-tabs">
         <div class="nav-tab active" data-tab="dashboard">
@@ -67,7 +92,8 @@
             <div class="card card-highlight">
                 <h3>Plus/Moins Value</h3>
                 <div class="value" id="total-gain">-- €</div>
-                <div id="total-investi-label-invest" class="text-muted text-sm" style="margin-top:4px;">Investi : --</div>
+                <div id="total-investi-label-invest" class="text-muted text-sm" style="margin-top:4px;">Investi : --
+                </div>
                 <div id="total-investi-label-reinvest" class="text-muted text-sm">Dividendes : --</div>
             </div>
         </div>
@@ -79,11 +105,12 @@
                     <canvas id="pieChart"></canvas>
                 </div>
             </div>
-        </div>    
-        
+        </div>
+
         <h3 class="pos-header" style="margin-top:32px;">POSITIONS ACTIVES</h3>
         <div id="positions-grid" class="positions-grid">
-            <div class="empty-state text-muted text-center" style="grid-column: 1/-1; padding: 40px;">Chargement des données...</div>
+            <div class="empty-state text-muted text-center" style="grid-column: 1/-1; padding: 40px;">Chargement des
+                données...</div>
         </div>
     </main>
 
@@ -113,7 +140,8 @@
                 <div id="custom-date-range" style="display: none; gap: 8px; margin-bottom: 15px;">
                     <input type="date" id="custom-start-date">
                     <input type="date" id="custom-end-date">
-                    <button id="apply-custom-range" class="btn btn-primary" style="width: auto; padding: 0 16px;">OK</button>
+                    <button id="apply-custom-range" class="btn btn-primary"
+                        style="width: auto; padding: 0 16px;">OK</button>
                 </div>
                 <div class="chart-container">
                     <canvas id="cumulativeChart"></canvas>
@@ -147,56 +175,35 @@
             </div>
         </div>
     </main>
-    
+
     <!-- DIVIDENDES TAB -->
     <main id="tab-dividendes" class="tab-content">
-        <div class="grid">
-            <div class="card card-highlight success">
-                <h3>Total Reçu</h3>
-                <div id="total-dividendes-val" class="value text-success">-- €</div>
-            </div>
-            <div class="card card-highlight success">
-                <h3>Rendement / PRU</h3>
-                <div id="yield-pru-val" class="value">-- %</div>
-            </div>
-        </div>
-        <div class="grid">
-            <div class="card card-highlight">
-                <h3>Évolution Annuelle</h3>
-                <div class="chart-container">
-                    <canvas id="dividendChart"></canvas>
-                </div>
-            </div>
-        </div>
-
+        <!-- CONTENU DYNAMIQUE (KPI + Graphique + Calendrier + Historique) -->
         <div id="dividends">
             <div class="text-center text-muted" style="padding:40px;">Chargement...</div>
         </div>
-
-        <div class="card card-highlight" style="margin-top: 24px; padding:0; overflow:hidden;">
-            <div style="padding:20px; border-bottom:1px solid var(--border);">
-                <h3 style="margin:0;">Historique Versements</h3>
-            </div>
-            <div style="overflow-x: auto;">
-                <table class="mobile-card-table">
-                    <thead>
-                        <tr>
-                            <th>Produit</th>
-                            <th class="text-center">Qté</th>
-                            <th class="text-center">Div/U</th>
-                            <th class="text-right">Total</th>
-                        </tr>
-                    </thead>
-                    <tbody id="dividend-table-body"></tbody>
-                </table>
-            </div>
-        </div>
     </main>
 
-    <button class="fab" id="openModalBtn">
-        <i data-lucide="plus"></i>
-    </button>
-   
+    <div class="fab-container" id="fabContainer">
+        <div class="fab-actions">
+            <button class="fab-mini" id="fab-plan" aria-label="Nouveau Plan">
+                <span class="fab-label">Nouveau Plan</span>
+                <i data-lucide="target"></i>
+            </button>
+            <button class="fab-mini" id="fab-dividend" aria-label="Nouveau Dividende">
+                <span class="fab-label">Nouveau Dividende</span>
+                <i data-lucide="coins"></i>
+            </button>
+            <button class="fab-mini" id="fab-transaction" aria-label="Nouvelle Transaction">
+                <span class="fab-label">Nouvelle Transaction</span>
+                <i data-lucide="arrow-right-left"></i>
+            </button>
+        </div>
+        <button class="fab" id="fabMain">
+            <i data-lucide="plus"></i>
+        </button>
+    </div>
+
     <!-- MODAL ACHAT (Ticket) -->
     <div class="modal" id="transactionModal">
         <div class="ticket-modal-content">
@@ -204,7 +211,7 @@
                 <h2 style="font-weight:800; letter-spacing:-0.5px;">NOUVELLE TRANSACTION</h2>
                 <span class="text-muted text-sm">AJOUTER UN ORDRE</span>
             </div>
-            
+
             <form id="transactionForm">
                 <div class="input-group">
                     <label>Date</label>
@@ -234,14 +241,16 @@
                     <input type="number" id="t_frais" step="any" placeholder="0.00 €">
                 </div>
 
-                <div style="margin: 16px 0; padding: 16px; border: 1px dashed var(--border); border-radius: 12px; background: var(--bg);">
+                <div
+                    style="margin: 16px 0; padding: 16px; border: 1px dashed var(--border); border-radius: 12px; background: var(--bg);">
                     <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
                         <span class="text-muted text-sm">Sous-total</span>
                         <span id="display-subtotal" class="font-bold">0,00 €</span>
                     </div>
                     <div style="display:flex; justify-content:space-between; align-items:center;">
                         <span class="font-bold">TOTAL NET</span>
-                        <span id="display-total" class="value" style="font-size:1.5rem; color:var(--primary);">0,00 €</span>
+                        <span id="display-total" class="value" style="font-size:1.5rem; color:var(--primary);">0,00
+                            €</span>
                     </div>
                 </div>
 
@@ -265,19 +274,24 @@
             <div style="text-align:center; margin-bottom:24px;">
                 <div class="text-muted text-sm">Cours actuel <span id="td-cours" class="font-bold">--</span></div>
                 <div style="display: flex; justify-content: center; margin-top: 8px;">
-                    <div id="td-perf" class="pos-badge" style="width: fit-content; min-width: 50px; text-align: center;">
+                    <div id="td-perf" class="pos-badge"
+                        style="width: fit-content; min-width: 50px; text-align: center;">
                         --%
                     </div>
                 </div>
             </div>
-            
+
             <div style="background:var(--bg); padding:16px; border-radius:12px; font-size:0.9rem;">
-                <div class="pos-row"><span class="text-muted">Quantité</span> <span id="td-qte" class="font-bold">0</span></div>
-                <div class="pos-row"><span class="text-muted">P.U.</span> <span id="td-pu" class="font-bold">--</span></div>
-                <div class="pos-row"><span class="text-muted">TOTAL HT</span> <span id="td-total-ht" class="font-bold">--</span></div>
+                <div class="pos-row"><span class="text-muted">Quantité</span> <span id="td-qte"
+                        class="font-bold">0</span></div>
+                <div class="pos-row"><span class="text-muted">P.U.</span> <span id="td-pu" class="font-bold">--</span>
+                </div>
+                <div class="pos-row"><span class="text-muted">TOTAL HT</span> <span id="td-total-ht"
+                        class="font-bold">--</span></div>
                 <div class="pos-row"><span class="text-muted">Frais</span> <span id="td-frais">--</span></div>
                 <div style="border-top:1px dashed var(--border); margin:8px 0;"></div>
-                <div class="pos-row"><span class="font-bold">Total Net</span> <span id="td-total-net" class="font-bold text-primary">--</span></div>
+                <div class="pos-row"><span class="font-bold">Total Net</span> <span id="td-total-net"
+                        class="font-bold text-primary">--</span></div>
             </div>
 
             <button id="btn-delete-transaction" class="btn btn-danger" style="margin-top:24px;">Supprimer</button>
@@ -285,10 +299,192 @@
         </div>
     </div>
 
+    <!-- MODAL DIVIDENDE (Similaire à Transaction) -->
+    <div class="modal" id="dividendModal">
+        <div class="ticket-modal-content">
+            <div class="text-center" style="margin-bottom:16px;">
+                <h2 style="font-weight:800; letter-spacing:-0.5px;">NOUVEAU DIVIDENDE</h2>
+                <span class="text-muted text-sm">AJOUTER UN VERSEMENT</span>
+            </div>
+
+            <form id="dividendForm">
+                <input type="hidden" id="d_id">
+                <div class="input-group">
+                    <label>Date du versement</label>
+                    <input type="date" id="d_date" required>
+                </div>
+
+                <div class="input-group">
+                    <label>Actif</label>
+                    <select id="d_ticker" required>
+                        <option value="" disabled selected>Chargement...</option>
+                    </select>
+                </div>
+
+                <div class="input-group">
+                    <label>Montant par action (Div/u)</label>
+                    <input type="number" id="d_amount" step="any" placeholder="€" required>
+                </div>
+
+                <div class="input-group">
+                    <label>Fréquence</label>
+                    <select id="d_recurrence">
+                        <option value="Annuel" selected>Annuel</option>
+                        <option value="Semestriel">Semestriel</option>
+                        <option value="Trimestriel">Trimestriel</option>
+                        <option value="Bimestriel">Bimestriel</option>
+                        <option value="Mensuel">Mensuel</option>
+                    </select>
+                </div>
+
+                <button type="submit" class="btn btn-submit btn-primary">Enregistrer</button>
+                <button type="button" id="closeDividendBtn" class="btn btn-text">Annuler</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL DETAIL DIVIDENDE (Edition/Suppression) -->
+    <div class="modal" id="dividendDetailModal">
+        <div class="ticket-modal-content">
+            <div class="text-center" style="margin-bottom:16px;">
+                <h2 style="font-weight:800; letter-spacing:-0.5px;">DÉTAIL DIVIDENDE</h2>
+                <span class="text-muted text-sm">MODIFIER OU SUPPRIMER</span>
+            </div>
+
+            <form id="dividendEditForm">
+                <!-- On stocke ancien date/code pour l'identification coté serveur -->
+                <input type="hidden" id="d_edit_original_date">
+                <input type="hidden" id="d_edit_original_code">
+                <input type="hidden" id="d_edit_id">
+
+                <div class="input-group">
+                    <label>Date du versement</label>
+                    <input type="date" id="d_edit_date" required>
+                </div>
+
+                <div class="input-group">
+                    <label>Actif</label>
+                    <input type="text" id="d_edit_nom" readonly style="background: var(--bg); opacity: 0.7;">
+                    <div id="d_edit_code" class="text-muted text-sm" style="margin-top:4px;"></div>
+                </div>
+
+                <div class="input-group">
+                    <label>Montant par Action</label>
+                    <input type="number" id="d_edit_amount" step="any" required>
+                </div>
+
+                <div class="input-group">
+                    <label>Fréquence</label>
+                    <select id="d_edit_recurrence">
+                        <option value="Annuel">Annuel</option>
+                        <option value="Semestriel">Semestriel</option>
+                        <option value="Trimestriel">Trimestriel</option>
+                        <option value="Bimestriel">Bimestriel</option>
+                        <option value="Mensuel">Mensuel</option>
+                    </select>
+                </div>
+
+                <div style="display: flex; gap: 12px; margin-top: 24px;">
+                    <button type="submit" class="btn btn-primary" style="flex: 1;">Enregistrer</button>
+                    <button type="button" id="btn-delete-dividend" class="btn btn-danger">Supprimer</button>
+                </div>
+                <button type="button" id="closeDividendDetailBtn" class="btn btn-text"
+                    style="width: 100%; margin-top: 12px;">Fermer</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL PLAN (Nouveau) -->
+    <div class="modal" id="planModal">
+        <div class="ticket-modal-content">
+            <div class="text-center" style="margin-bottom:16px;">
+                <h2 style="font-weight:800; letter-spacing:-0.5px;">NOUVEAU PLAN</h2>
+                <span class="text-muted text-sm">OBJECTIF D'INVESTISSEMENT</span>
+            </div>
+
+            <form id="planForm">
+                <div class="input-group">
+                    <label>Nom du plan</label>
+                    <input type="text" id="p_commentaire" placeholder="Ex: DCA Mensuel" required>
+                </div>
+
+                <div class="input-group">
+                    <label>Montant Cible Mensuel</label>
+                    <input type="number" id="p_montant" step="any" placeholder="€" required>
+                </div>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+                    <div class="input-group">
+                        <label>Date Début</label>
+                        <input type="date" id="p_date_debut" required>
+                    </div>
+                    <div class="input-group">
+                        <label>Date Fin (Optionnel)</label>
+                        <input type="date" id="p_date_fin">
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-submit btn-primary">Créer le Plan</button>
+                <button type="button" id="closePlanBtn" class="btn btn-text">Annuler</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL DETAIL PLAN (Edition/Suppression) -->
+    <div class="modal" id="planDetailModal">
+        <div class="ticket-modal-content">
+            <div class="text-center" style="margin-bottom:16px;">
+                <h2 style="font-weight:800; letter-spacing:-0.5px;">DÉTAIL DU PLAN</h2>
+                <span class="text-muted text-sm">MODIFIER OU SUPPRIMER</span>
+            </div>
+
+            <form id="planEditForm">
+                <!-- On stocke les infos initiales pour retrouver le plan si besoin, ou on envoie tout l'objet modifié -->
+                <input type="hidden" id="p_edit_original_date_debut">
+                <input type="hidden" id="p_edit_original_commentaire">
+
+                <div class="input-group">
+                    <label>Nom du plan</label>
+                    <input type="text" id="p_edit_commentaire" required>
+                </div>
+
+                <div class="input-group">
+                    <label>Montant Cible Mensuel</label>
+                    <input type="number" id="p_edit_montant" step="any" required>
+                </div>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+                    <div class="input-group">
+                        <label>Date Début</label>
+                        <input type="date" id="p_edit_date_debut" required>
+                    </div>
+                    <div class="input-group">
+                        <label>Date Fin</label>
+                        <input type="date" id="p_edit_date_fin">
+                    </div>
+                </div>
+
+                <div class="input-group" style="margin-top: 16px;">
+                    <label>Statut Actuel</label>
+                    <div id="p_edit_statut_display" class="font-bold"
+                        style="padding: 10px; background: var(--bg); border-radius: 8px;">--</div>
+                </div>
+
+                <div style="display: flex; gap: 12px; margin-top: 24px;">
+                    <button type="submit" class="btn btn-primary" style="flex: 1;">Enregistrer</button>
+                    <button type="button" id="btn-delete-plan" class="btn btn-danger">Supprimer</button>
+                </div>
+                <button type="button" id="closePlanDetailBtn" class="btn btn-text"
+                    style="width: 100%; margin-top: 12px;">Fermer</button>
+            </form>
+        </div>
+    </div>
+
     <!-- MODAL HISTORIQUE -->
     <div class="modal" id="productHistoryModal">
         <div class="history-modal-content" style="padding:0; overflow:hidden; display:flex; flex-direction:column;">
-            <div style="padding:20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+            <div
+                style="padding:20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
                 <div>
                     <h2 id="modal-history-title" style="font-size:1.1rem; font-weight:700;">Historique</h2>
                     <div id="modal-history-cours" class="text-muted text-sm">Cours: --</div>
@@ -316,4 +512,5 @@
 
     <script src="script.js"></script>
 </body>
+
 </html>
